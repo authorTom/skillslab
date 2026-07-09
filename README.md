@@ -1,36 +1,60 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Clinical Skills
 
-## Getting Started
+A clean, fast, responsive web app for delivering procedural clinical skills educational
+materials — PDFs, images, step-by-step storyboards and embedded Vimeo videos. Learners pick a
+skill and review its resources before, during or after the clinical skills lab; administrators
+manage courses through a simple admin section.
 
-First, run the development server:
+## Stack
+
+- **Next.js** (App Router, TypeScript, React Server Components + Server Actions)
+- **Tailwind CSS** for a minimalist, fully responsive UI (desktop / tablet / mobile)
+- **SQLite** (`better-sqlite3`) — zero-setup local database stored in `data/app.db`
+- Uploaded files stored in `data/uploads/` and served via `/files/…`
+
+## Getting started
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000. The database is created and seeded with example skills on first
+run — replace them with your own content via the admin section.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Admin section
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Go to **/admin** (also linked in the header). The password is set in `.env.local`:
 
-## Learn More
+```
+ADMIN_PASSWORD=clinical-admin   # change this before deploying
+```
 
-To learn more about Next.js, take a look at the following resources:
+From the admin section you can:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- add, edit and remove skills (courses)
+- upload PDFs and images
+- build storyboards from multiple images (shown to learners as a step-through sequence)
+- attach Vimeo videos by pasting the video URL (private links with a hash are supported)
+- reorder the resources shown for each skill
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Production
 
-## Deploy on Vercel
+```bash
+npm run build
+npm start
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Project layout
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Path | Purpose |
+| --- | --- |
+| `src/app/page.tsx` | Skill catalogue with search and category filters |
+| `src/app/skills/[slug]/page.tsx` | Skill detail page with the resource viewer |
+| `src/components/ResourceViewer.tsx` | PDF viewer, image lightbox, storyboard stepper, Vimeo embed |
+| `src/app/admin/` | Admin section: login, course list, skill editor |
+| `src/app/admin/actions.ts` | Server actions: auth, skill CRUD, uploads |
+| `src/app/files/[...path]/route.ts` | Serves uploaded files from `data/uploads` |
+| `src/lib/db.ts` | SQLite schema + first-run seed data |
+| `src/lib/data.ts` | Typed query/CRUD helpers |
+| `data/` | Database and uploads (git-ignored — back this up) |
