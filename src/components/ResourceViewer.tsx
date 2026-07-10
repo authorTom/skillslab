@@ -22,7 +22,7 @@ export default function ResourceViewer({ resources }: { resources: Resource[] })
   if (!active) return null;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
       <nav aria-label="Resources" className="lg:sticky lg:top-20 lg:self-start">
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-stone-400">
           Resources

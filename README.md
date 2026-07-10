@@ -5,6 +5,28 @@ materials — PDFs, images, step-by-step storyboards and embedded Vimeo videos. 
 skill and review its resources before, during or after the clinical skills lab; administrators
 manage courses through a simple admin section.
 
+## Screenshots
+
+**Skill catalogue** — searchable, filterable by category, with per-skill thumbnails:
+
+<img src="docs/screenshots/catalogue.png" alt="Skill catalogue with search, category filters and thumbnail cards" width="100%">
+
+**Resource viewer** — embedded Vimeo videos and step-through storyboards with captions
+(plus inline PDFs and images):
+
+<p>
+  <img src="docs/screenshots/video.png" alt="Skill page playing an embedded Vimeo demonstration video" width="49%">
+  <img src="docs/screenshots/storyboard.png" alt="Step-by-step storyboard viewer with per-step captions" width="49%">
+</p>
+
+**Admin section & mobile** — password-protected course management (details, thumbnail,
+uploads, Vimeo links, reordering), and the same viewer on a phone:
+
+<p>
+  <img src="docs/screenshots/admin.png" alt="Admin skill editor with details form and resource management" width="66%">
+  <img src="docs/screenshots/mobile.png" alt="Storyboard viewer on a mobile phone" width="31%">
+</p>
+
 ## Stack
 
 - **Next.js** (App Router, TypeScript, React Server Components + Server Actions)
