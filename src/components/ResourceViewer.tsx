@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Resource } from "@/lib/data";
+import { parseStoryboardFrames, type StoryboardFrame } from "@/lib/storyboard";
 import { ResourceIcon, RESOURCE_TYPE_LABELS } from "./ResourceIcon";
 
 /** Turns a Vimeo URL (with optional privacy hash) into a player embed URL. */
@@ -12,15 +13,6 @@ function vimeoEmbedUrl(url: string): string | null {
   if (!match) return null;
   const [, id, hash] = match;
   return `https://player.vimeo.com/video/${id}${hash ? `?h=${hash}` : ""}`;
-}
-
-function parseFrames(content: string): string[] {
-  try {
-    const parsed = JSON.parse(content);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
 }
 
 export default function ResourceViewer({ resources }: { resources: Resource[] }) {
@@ -81,7 +73,9 @@ function ResourcePanel({ resource }: { resource: Resource }) {
     case "image":
       return <ImagePanel src={resource.content} alt={resource.title} />;
     case "storyboard":
-      return <StoryboardPanel frames={parseFrames(resource.content)} title={resource.title} />;
+      return (
+        <StoryboardPanel frames={parseStoryboardFrames(resource.content)} title={resource.title} />
+      );
   }
 }
 
@@ -170,7 +164,7 @@ function ImagePanel({ src, alt }: { src: string; alt: string }) {
   );
 }
 
-function StoryboardPanel({ frames, title }: { frames: string[]; title: string }) {
+function StoryboardPanel({ frames, title }: { frames: StoryboardFrame[]; title: string }) {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -196,11 +190,19 @@ function StoryboardPanel({ frames, title }: { frames: string[]; title: string })
         <div className="bg-stone-100">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={frames[index]}
-            alt={`${title} — frame ${index + 1} of ${frames.length}`}
+            src={frames[index].src}
+            alt={
+              frames[index].caption || `${title} — frame ${index + 1} of ${frames.length}`
+            }
             className="mx-auto max-h-[65vh] w-auto max-w-full"
           />
         </div>
+        {frames[index].caption && (
+          <p className="border-t border-stone-200 bg-stone-50 px-5 py-3 text-sm text-stone-600">
+            <span className="mr-2 font-semibold text-stone-400">Step {index + 1}</span>
+            {frames[index].caption}
+          </p>
+        )}
         <div className="flex items-center justify-between border-t border-stone-200 px-4 py-3">
           <button
             onClick={() => setIndex((i) => Math.max(i - 1, 0))}
@@ -224,15 +226,16 @@ function StoryboardPanel({ frames, title }: { frames: string[]; title: string })
       <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
         {frames.map((frame, i) => (
           <button
-            key={frame + i}
+            key={frame.src + i}
             onClick={() => setIndex(i)}
+            title={frame.caption || undefined}
             className={`h-14 w-20 shrink-0 overflow-hidden rounded-lg border-2 transition ${
               i === index ? "border-teal-600" : "border-transparent opacity-60 hover:opacity-100"
             }`}
-            aria-label={`Go to frame ${i + 1}`}
+            aria-label={frame.caption ? `Step ${i + 1}: ${frame.caption}` : `Go to frame ${i + 1}`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={frame} alt="" className="h-full w-full object-cover" />
+            <img src={frame.src} alt="" className="h-full w-full object-cover" />
           </button>
         ))}
       </div>

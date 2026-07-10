@@ -8,8 +8,10 @@ export interface Skill {
   title: string;
   category: string;
   description: string;
+  thumbnail: string;
   created_at: string;
 }
+
 
 export interface SkillWithCount extends Skill {
   resource_count: number;
@@ -108,6 +110,10 @@ export function updateSkill(id: number, title: string, category: string, descrip
     .prepare("UPDATE skills SET slug = ?, title = ?, category = ?, description = ? WHERE id = ?")
     .run(slug, title, category, description, id);
   return slug;
+}
+
+export function setSkillThumbnail(id: number, thumbnail: string) {
+  getDb().prepare("UPDATE skills SET thumbnail = ? WHERE id = ?").run(thumbnail, id);
 }
 
 export function deleteSkill(id: number) {

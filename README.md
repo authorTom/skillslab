@@ -32,17 +32,36 @@ ADMIN_PASSWORD=clinical-admin   # change this before deploying
 
 From the admin section you can:
 
-- add, edit and remove skills (courses)
+- add, edit and remove skills (courses), including an optional card thumbnail
 - upload PDFs and images
-- build storyboards from multiple images (shown to learners as a step-through sequence)
+- build storyboards from multiple images with a caption per step (shown to learners as a
+  step-through sequence)
 - attach Vimeo videos by pasting the video URL (private links with a hash are supported)
 - reorder the resources shown for each skill
+
+Uploads through the admin section are limited to 50 MB per submission (configured via
+`experimental.serverActions.bodySizeLimit` in `next.config.ts`).
 
 ### Production
 
 ```bash
 npm run build
 npm start
+```
+
+### Backups
+
+Everything lives in `data/` (SQLite database + uploaded files). To snapshot it into
+`backups/<timestamp>/` — safe to run while the app is serving:
+
+```bash
+npm run backup
+```
+
+The 14 most recent snapshots are kept. To run nightly at 02:00 via cron:
+
+```
+0 2 * * * cd /path/to/clinical-skills && /usr/local/bin/npm run backup
 ```
 
 ## Project layout

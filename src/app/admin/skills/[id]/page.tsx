@@ -5,33 +5,26 @@ import { getSkillById, listResources } from "@/lib/data";
 import { ResourceIcon, RESOURCE_TYPE_LABELS } from "@/components/ResourceIcon";
 import AddResourceForm from "@/components/admin/AddResourceForm";
 import ConfirmButton from "@/components/admin/ConfirmButton";
+import SkillForm from "@/components/admin/SkillForm";
 import {
   addResourceAction,
   deleteResourceAction,
   moveResourceAction,
   updateSkillAction,
 } from "../../actions";
-import SkillFields from "@/components/admin/SkillFields";
 
 export const dynamic = "force-dynamic";
-
-const ERROR_MESSAGES: Record<string, string> = {
-  title: "A title is required.",
-  vimeo: "That link doesn't look like a Vimeo URL (e.g. https://vimeo.com/76979871).",
-  file: "Please choose a file to upload.",
-  filetype: "That file type isn't supported for the selected resource type.",
-};
 
 export default async function EditSkillPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ saved?: string; error?: string }>;
+  searchParams: Promise<{ created?: string }>;
 }) {
   await requireAdmin();
   const { id: idParam } = await params;
-  const { saved, error } = await searchParams;
+  const { created } = await searchParams;
   const id = Number(idParam);
   const skill = Number.isInteger(id) ? getSkillById(id) : undefined;
   if (!skill) notFound();
@@ -52,25 +45,23 @@ export default async function EditSkillPage({
       </div>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">{skill.title}</h1>
 
-      {saved && (
+      {created && (
         <p className="mt-4 rounded-lg bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          Changes saved.
-        </p>
-      )}
-      {error && ERROR_MESSAGES[error] && (
-        <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-          {ERROR_MESSAGES[error]}
+          Skill created. Now add its learning resources below.
         </p>
       )}
 
       <section className="mt-8 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
         <h2 className="text-base font-semibold">Details</h2>
-        <form action={updateSkillAction.bind(null, skill.id)} className="mt-5 space-y-5">
-          <SkillFields defaults={skill} />
-          <button className="rounded-xl bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700">
-            Save changes
-          </button>
-        </form>
+        <div className="mt-5">
+          <SkillForm
+            action={updateSkillAction.bind(null, skill.id)}
+            defaults={skill}
+            currentThumbnail={skill.thumbnail || undefined}
+            submitLabel="Save changes"
+            pendingLabel="Saving…"
+          />
+        </div>
       </section>
 
       <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">

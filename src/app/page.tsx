@@ -97,24 +97,34 @@ export default async function HomePage({
             <li key={skill.id}>
               <Link
                 href={`/skills/${skill.slug}`}
-                className="group flex h-full flex-col rounded-2xl border border-stone-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-md"
+                className="group flex h-full flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-md"
               >
-                {skill.category && (
-                  <span className="mb-3 w-fit rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700">
-                    {skill.category}
-                  </span>
+                {skill.thumbnail && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={skill.thumbnail}
+                    alt=""
+                    className="aspect-video w-full border-b border-stone-100 object-cover"
+                  />
                 )}
-                <h2 className="text-lg font-semibold tracking-tight group-hover:text-teal-700">
-                  {skill.title}
-                </h2>
-                <p className="mt-2 line-clamp-3 flex-1 text-sm leading-relaxed text-stone-500">
-                  {skill.description}
-                </p>
-                <p className="mt-4 text-xs font-medium text-stone-400">
-                  {skill.resource_count === 1
-                    ? "1 resource"
-                    : `${skill.resource_count} resources`}
-                </p>
+                <div className="flex flex-1 flex-col p-6">
+                  {skill.category && (
+                    <span className="mb-3 w-fit rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700">
+                      {skill.category}
+                    </span>
+                  )}
+                  <h2 className="text-lg font-semibold tracking-tight group-hover:text-teal-700">
+                    {skill.title}
+                  </h2>
+                  <p className="mt-2 line-clamp-3 flex-1 text-sm leading-relaxed text-stone-500">
+                    {skill.description}
+                  </p>
+                  <p className="mt-4 text-xs font-medium text-stone-400">
+                    {skill.resource_count === 1
+                      ? "1 resource"
+                      : `${skill.resource_count} resources`}
+                  </p>
+                </div>
               </Link>
             </li>
           ))}

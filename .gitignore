@@ -42,3 +42,6 @@ next-env.d.ts
 
 # app data (SQLite db + uploaded files)
 /data
+
+# local backups of data/
+/backups

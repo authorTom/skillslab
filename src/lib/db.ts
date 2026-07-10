@@ -24,6 +24,7 @@ export function getDb(): Database.Database {
       title TEXT NOT NULL,
       category TEXT NOT NULL DEFAULT '',
       description TEXT NOT NULL DEFAULT '',
+      thumbnail TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -36,6 +37,12 @@ export function getDb(): Database.Database {
       position INTEGER NOT NULL DEFAULT 0
     );
   `);
+
+  // Databases created before the thumbnail column existed.
+  const skillColumns = db.prepare("PRAGMA table_info(skills)").all() as { name: string }[];
+  if (!skillColumns.some((c) => c.name === "thumbnail")) {
+    db.exec("ALTER TABLE skills ADD COLUMN thumbnail TEXT NOT NULL DEFAULT ''");
+  }
 
   seedIfEmpty(db);
   globalThis.__clinicalSkillsDb = db;
@@ -78,59 +85,92 @@ function seedIfEmpty(db: Database.Database) {
   const vitalsImage = seedVitalsImage();
 
   const insertSkill = db.prepare(
-    "INSERT INTO skills (slug, title, category, description) VALUES (?, ?, ?, ?)"
+    "INSERT INTO skills (slug, title, category, description, thumbnail) VALUES (?, ?, ?, ?, ?)"
   );
   const insertResource = db.prepare(
     "INSERT INTO resources (skill_id, type, title, content, position) VALUES (?, ?, ?, ?, ?)"
   );
+  const seed = (
+    slug: string,
+    title: string,
+    category: string,
+    description: string,
+    initials: string
+  ) =>
+    insertSkill.run(slug, title, category, description, seedThumbnail(slug, category, initials))
+      .lastInsertRowid;
 
-  const venepuncture = insertSkill.run(
+  const venepuncture = seed(
     "venepuncture",
     "Venepuncture",
     "Procedures",
-    "Safe collection of venous blood samples, including patient preparation, vein selection, order of draw and post-procedure care."
-  ).lastInsertRowid;
+    "Safe collection of venous blood samples, including patient preparation, vein selection, order of draw and post-procedure care.",
+    "Ve"
+  );
   insertResource.run(venepuncture, "video", "Demonstration video", "https://vimeo.com/76979871", 0);
   insertResource.run(venepuncture, "storyboard", "Step-by-step storyboard", JSON.stringify(storyboardFrames), 1);
   insertResource.run(venepuncture, "pdf", "Procedure guide (PDF)", guidePdf, 2);
 
-  const cannulation = insertSkill.run(
+  const cannulation = seed(
     "peripheral-iv-cannulation",
     "Peripheral IV Cannulation",
     "Procedures",
-    "Insertion of a peripheral intravenous cannula: site selection, aseptic technique, securing the device and documentation."
-  ).lastInsertRowid;
+    "Insertion of a peripheral intravenous cannula: site selection, aseptic technique, securing the device and documentation.",
+    "IV"
+  );
   insertResource.run(cannulation, "video", "Demonstration video", "https://vimeo.com/76979871", 0);
 
-  const bls = insertSkill.run(
+  const bls = seed(
     "basic-life-support",
     "Basic Life Support",
     "Emergency",
-    "Adult basic life support: recognising cardiac arrest, high-quality chest compressions, rescue breaths and safe defibrillator use."
-  ).lastInsertRowid;
+    "Adult basic life support: recognising cardiac arrest, high-quality chest compressions, rescue breaths and safe defibrillator use.",
+    "BLS"
+  );
   insertResource.run(bls, "pdf", "Algorithm summary (PDF)", blsPdf, 0);
 
-  const vitals = insertSkill.run(
+  const vitals = seed(
     "vital-signs-measurement",
     "Vital Signs Measurement",
     "Assessment",
-    "Accurate measurement and interpretation of temperature, pulse, respiratory rate, blood pressure and oxygen saturation."
-  ).lastInsertRowid;
+    "Accurate measurement and interpretation of temperature, pulse, respiratory rate, blood pressure and oxygen saturation.",
+    "VS"
+  );
   insertResource.run(vitals, "image", "Equipment overview", vitalsImage, 0);
 
-  insertSkill.run(
+  seed(
     "urinary-catheterisation",
     "Urinary Catheterisation",
     "Procedures",
-    "Aseptic insertion of a urethral catheter, including consent, positioning, catheter selection and ongoing care."
+    "Aseptic insertion of a urethral catheter, including consent, positioning, catheter selection and ongoing care.",
+    "UC"
   );
 
-  insertSkill.run(
+  seed(
     "wound-assessment-dressing",
     "Wound Assessment & Dressing",
     "Assessment",
-    "Systematic wound assessment, dressing selection and aseptic dressing technique for acute and chronic wounds."
+    "Systematic wound assessment, dressing selection and aseptic dressing technique for acute and chronic wounds.",
+    "WA"
   );
+}
+
+const THUMBNAIL_PALETTES: Record<string, { bg: string; shape: string; accent: string }> = {
+  Procedures: { bg: "#ccfbf1", shape: "#99f6e4", accent: "#0f766e" },
+  Emergency: { bg: "#ffe4e6", shape: "#fecdd3", accent: "#be123c" },
+  Assessment: { bg: "#e0f2fe", shape: "#bae6fd", accent: "#0369a1" },
+};
+
+function seedThumbnail(slug: string, category: string, initials: string): string {
+  const palette = THUMBNAIL_PALETTES[category] ?? THUMBNAIL_PALETTES.Procedures;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
+  <rect width="800" height="450" fill="${palette.bg}"/>
+  <circle cx="660" cy="60" r="180" fill="${palette.shape}"/>
+  <circle cx="90" cy="420" r="130" fill="${palette.shape}"/>
+  <circle cx="400" cy="225" r="110" fill="${palette.accent}"/>
+  <text x="400" y="252" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="76" font-weight="bold" fill="#ffffff">${initials}</text>
+</svg>`;
+  return saveSeedFile(`seed-thumb-${slug}.svg`, svg);
 }
 
 function saveSeedFile(name: string, data: Buffer | string): string {
@@ -138,12 +178,12 @@ function saveSeedFile(name: string, data: Buffer | string): string {
   return `/files/${name}`;
 }
 
-function seedStoryboardFrames(): string[] {
+function seedStoryboardFrames(): { src: string; caption: string }[] {
   const steps = [
-    ["1", "Prepare", "Confirm identity, gain consent, perform hand hygiene"],
-    ["2", "Tourniquet", "Apply tourniquet and palpate to select a vein"],
+    ["1", "Prepare", "Confirm identity, gain consent and perform hand hygiene"],
+    ["2", "Tourniquet", "Apply the tourniquet and palpate to select a vein"],
     ["3", "Cleanse", "Clean the site for 30 seconds and allow to dry"],
-    ["4", "Insert", "Insert needle at 15–30° with the bevel up"],
+    ["4", "Insert", "Insert the needle at 15–30° with the bevel up"],
     ["5", "Collect", "Draw samples following the correct order of draw"],
     ["6", "Complete", "Release, withdraw, apply pressure and label samples"],
   ];
@@ -151,13 +191,12 @@ function seedStoryboardFrames(): string[] {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500">
   <rect width="800" height="500" fill="#f0fdfa"/>
   <rect x="24" y="24" width="752" height="452" rx="16" fill="#ffffff" stroke="#99f6e4" stroke-width="2"/>
-  <circle cx="120" cy="160" r="56" fill="#0d9488"/>
-  <text x="120" y="182" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="60" font-weight="bold" fill="#ffffff">${n}</text>
-  <text x="64" y="300" font-family="Helvetica, Arial, sans-serif" font-size="42" font-weight="bold" fill="#134e4a">${title}</text>
-  <text x="64" y="352" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#57534e">${caption}</text>
+  <circle cx="120" cy="180" r="56" fill="#0d9488"/>
+  <text x="120" y="202" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="60" font-weight="bold" fill="#ffffff">${n}</text>
+  <text x="64" y="330" font-family="Helvetica, Arial, sans-serif" font-size="42" font-weight="bold" fill="#134e4a">${title}</text>
   <text x="64" y="440" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#a8a29e">Sample storyboard frame — replace via the admin section</text>
 </svg>`;
-    return saveSeedFile(`seed-venepuncture-step-${i + 1}.svg`, svg);
+    return { src: saveSeedFile(`seed-venepuncture-step-${i + 1}.svg`, svg), caption };
   });
 }
 
