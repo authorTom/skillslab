@@ -1,7 +1,7 @@
 services:
   app:
     build: .
-    image: clinical-skills
+    image: skillslab
     ports:
       - "3000:3000"
     environment:

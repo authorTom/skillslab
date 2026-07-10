@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Clinical Skills",
-    template: "%s · Clinical Skills",
+    default: "SkillsLab",
+    template: "%s · SkillsLab",
   },
   description:
     "Educational resources for procedural clinical skills: videos, storyboards, guides and images.",
@@ -38,7 +38,7 @@ export default function RootLayout({
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-600 text-sm font-bold text-white">
                 +
               </span>
-              Clinical Skills
+              SkillsLab
             </Link>
             <nav className="flex items-center gap-6 text-sm">
               <Link href="/" className="text-stone-600 transition-colors hover:text-stone-900">
@@ -53,7 +53,7 @@ export default function RootLayout({
         <div className="flex-1">{children}</div>
         <footer className="border-t border-stone-200 py-6">
           <p className="mx-auto max-w-6xl px-4 text-xs text-stone-400 sm:px-6">
-            Clinical Skills — educational resource library
+            SkillsLab — clinical skills resource library
           </p>
         </footer>
       </body>

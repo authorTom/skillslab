@@ -1,4 +1,4 @@
-# Clinical Skills
+# SkillsLab
 
 A clean, fast, responsive web app for delivering procedural clinical skills educational
 materials — PDFs, images, step-by-step storyboards and embedded Vimeo videos. Learners pick a
@@ -83,20 +83,20 @@ ADMIN_PASSWORD=change-me docker compose up -d
 Or without compose:
 
 ```bash
-docker build -t clinical-skills .
+docker build -t skillslab .
 docker run -d -p 3000:3000 -e ADMIN_PASSWORD=change-me \
-  -v clinical-data:/app/data clinical-skills
+  -v skillslab-data:/app/data skillslab
 ```
 
 Pushes to `main` (and `v*` tags) also publish a multi-arch image to GitHub Container
 Registry via `.github/workflows/docker.yml`:
 
 ```bash
-docker pull ghcr.io/authortom/clinical-skills:latest
+docker pull ghcr.io/authortom/skillslab:latest
 ```
 
 When backing up a containerised deployment, snapshot the `/app/data` volume (e.g.
-`docker run --rm -v clinical-data:/data -v "$PWD":/backup alpine tar czf /backup/data.tgz /data`).
+`docker run --rm -v skillslab-data:/data -v "$PWD":/backup alpine tar czf /backup/data.tgz /data`).
 
 ### Backups
 
@@ -110,7 +110,7 @@ npm run backup
 The 14 most recent snapshots are kept. To run nightly at 02:00 via cron:
 
 ```
-0 2 * * * cd /path/to/clinical-skills && /usr/local/bin/npm run backup
+0 2 * * * cd /path/to/skillslab && /usr/local/bin/npm run backup
 ```
 
 ## Project layout
