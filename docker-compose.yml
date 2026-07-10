@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    image: clinical-skills
+    ports:
+      - "3000:3000"
+    environment:
+      # Override with: ADMIN_PASSWORD=... docker compose up, or an .env file.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-clinical-admin}
+    volumes:
+      - clinical-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  clinical-data:

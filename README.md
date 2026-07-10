@@ -49,6 +49,33 @@ npm run build
 npm start
 ```
 
+### Docker
+
+The repo ships a multi-stage `Dockerfile` (Next.js standalone output, runs as a non-root
+user) and a compose file that persists `data/` in a named volume:
+
+```bash
+ADMIN_PASSWORD=change-me docker compose up -d
+```
+
+Or without compose:
+
+```bash
+docker build -t clinical-skills .
+docker run -d -p 3000:3000 -e ADMIN_PASSWORD=change-me \
+  -v clinical-data:/app/data clinical-skills
+```
+
+Pushes to `main` (and `v*` tags) also publish a multi-arch image to GitHub Container
+Registry via `.github/workflows/docker.yml`:
+
+```bash
+docker pull ghcr.io/authortom/clinical-skills:latest
+```
+
+When backing up a containerised deployment, snapshot the `/app/data` volume (e.g.
+`docker run --rm -v clinical-data:/data -v "$PWD":/backup alpine tar czf /backup/data.tgz /data`).
+
 ### Backups
 
 Everything lives in `data/` (SQLite database + uploaded files). To snapshot it into
