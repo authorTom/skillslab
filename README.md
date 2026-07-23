@@ -73,26 +73,26 @@ npm start
 
 ### Docker
 
-The repo ships a multi-stage `Dockerfile` (Next.js standalone output, runs as a non-root
-user) and a compose file that persists `data/` in a named volume:
+Pushes to `main` (and `v*` tags) publish a multi-arch image to GitHub Container Registry
+via `.github/workflows/docker.yml`. The shipped `compose.yaml` pulls that prebuilt image,
+so you can deploy without cloning the repo — grab the file and start it:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/authorTom/skillslab/main/compose.yaml -o compose.yaml
 ADMIN_PASSWORD=change-me docker compose up -d
 ```
 
-Or without compose:
+`compose.yaml` persists `data/` in a named volume, runs an `init` process, and includes a
+healthcheck. It references `ghcr.io/authortom/skillslab:latest`, so `docker compose pull`
+fetches new versions.
+
+To build from source instead of pulling (multi-stage `Dockerfile`, Next.js standalone
+output, runs as a non-root user):
 
 ```bash
 docker build -t skillslab .
 docker run -d -p 3000:3000 -e ADMIN_PASSWORD=change-me \
   -v skillslab-data:/app/data skillslab
-```
-
-Pushes to `main` (and `v*` tags) also publish a multi-arch image to GitHub Container
-Registry via `.github/workflows/docker.yml`:
-
-```bash
-docker pull ghcr.io/authortom/skillslab:latest
 ```
 
 When backing up a containerised deployment, snapshot the `/app/data` volume (e.g.
