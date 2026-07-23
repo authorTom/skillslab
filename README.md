@@ -86,6 +86,10 @@ ADMIN_PASSWORD=change-me docker compose up -d
 healthcheck. It references `ghcr.io/authortom/skillslab:latest`, so `docker compose pull`
 fetches new versions.
 
+Instead of passing `ADMIN_PASSWORD` on the command line, you can drop a `.env` file next to
+`compose.yaml` (copy [`.env.example`](.env.example) and edit it) — compose reads it
+automatically. Keep that `.env` out of version control.
+
 To build from source instead of pulling (multi-stage `Dockerfile`, Next.js standalone
 output, runs as a non-root user):
 
