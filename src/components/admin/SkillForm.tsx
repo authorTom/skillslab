@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import type { ActionState } from "@/app/admin/actions";
-import SkillFields from "./SkillFields";
+import SkillFields, { type CategoryOption, type SkillDefaults } from "./SkillFields";
 
 function SubmitButton({ label, pendingLabel }: { label: string; pendingLabel: string }) {
   const { pending } = useFormStatus();
@@ -20,12 +20,16 @@ function SubmitButton({ label, pendingLabel }: { label: string; pendingLabel: st
 export default function SkillForm({
   action,
   defaults,
+  categories,
+  groups,
   currentThumbnail,
   submitLabel,
   pendingLabel,
 }: {
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
-  defaults?: { title: string; category: string; description: string };
+  defaults?: SkillDefaults;
+  categories: CategoryOption[];
+  groups: { id: number; name: string }[];
   currentThumbnail?: string;
   submitLabel: string;
   pendingLabel: string;
@@ -41,7 +45,7 @@ export default function SkillForm({
         <p className="rounded-lg bg-teal-50 px-3 py-2 text-sm text-teal-800">{state.success}</p>
       )}
 
-      <SkillFields defaults={defaults} />
+      <SkillFields defaults={defaults} categories={categories} groups={groups} />
 
       <div>
         <label htmlFor="thumbnail" className="mb-1.5 block text-sm font-medium text-stone-700">

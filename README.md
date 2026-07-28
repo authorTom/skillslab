@@ -7,7 +7,7 @@ PDFs, images, step-by-step storyboards and embedded Vimeo videos. Learners pick
 a skill and review its resources before, during or after the clinical skills
 lab; administrators manage courses through a simple admin section.
 
-![Skill catalogue with search, category filters and thumbnail cards](docs/screenshots/catalogue.png)
+![Skill catalogue with search, group and category filters and thumbnail cards](docs/screenshots/catalogue.png)
 
 | Resource viewer — embedded video | Storyboards — step-by-step with captions |
 | --- | --- |
@@ -32,14 +32,17 @@ LMS integration; it is a well-organised library, not a learning platform.
 
 ## What it does
 
-- **Skill catalogue** — searchable, filterable by category, with a thumbnail per
-  skill.
+- **Skill catalogue** — searchable, filterable by group and category, with a
+  thumbnail per skill.
 - **Resource viewer** — inline PDFs, an image lightbox, step-through storyboards
   with a caption per step, and embedded Vimeo videos (private links with a hash
   are supported).
 - **Admin section** — password-protected course management: add, edit and remove
-  skills, upload PDFs and images, build storyboards, attach Vimeo videos by
-  pasting the URL, and reorder the resources shown for each skill.
+  skills, organise them into groups and categories, upload PDFs and images,
+  build storyboards, attach Vimeo videos by pasting the URL, and reorder the
+  resources shown for each skill.
+- **Nothing lost by accident** — resources stay editable after they are added,
+  and deletions go to a recycle bin.
 - **Responsive** — desktop, tablet and mobile, built minimalist throughout.
 - **Zero setup** — the database is created and seeded with example skills on
   first run.
@@ -100,8 +103,54 @@ for a container deployment.
 Uploads through the admin section are limited to 50 MB per submission,
 configured via `experimental.serverActions.bodySizeLimit` in `next.config.ts`.
 
-Everything else — skills, categories, resources, thumbnails — is managed in the
-admin section.
+Everything else — skills, groups, categories, resources, thumbnails — is managed
+in the admin section.
+
+## Organising the catalogue
+
+Courses are organised two levels deep: a **group** holds **categories**, and a
+category holds courses — *Core clinical skills › Procedures › Venepuncture*.
+Both levels are optional, so a category can sit outside any group and a course
+can be left uncategorised.
+
+Manage them at **/admin/categories**: create groups and categories, rename them,
+move a category to another group, and reorder both. The order you set is the
+order learners see. A course's category is picked on its own edit page, where
+**+ New category…** creates one without leaving the form.
+
+Learners get group and category filter chips with course counts above the
+catalogue, and the courses themselves are laid out under group and category
+headings. Search matches titles, descriptions and category names.
+
+Deleting a group or a category never deletes a course: a deleted group leaves
+its categories ungrouped, and a deleted category leaves its courses
+uncategorised, where they appear under *Other courses*.
+
+Upgrading an existing installation? The free-text category on each course is
+converted into a real category the first time the app starts. Those categories
+start out without a group, so open **/admin/categories** to arrange them.
+
+## Editing and deleting
+
+Every resource has an **Edit** button (`/admin/resources/<id>`). What you can
+change depends on the type: a video's title and Vimeo link; a PDF's or image's
+title and the file itself; a storyboard's title, per-step captions, step order
+and which steps it has. A resource's *type* can't be changed — remove it and add
+a new one instead.
+
+Nothing is erased on the first click. Deleting a resource or a course, replacing
+a thumbnail, or replacing the file behind a resource moves the old version to
+the recycle bin at **/admin/trash** instead:
+
+- **Restore** puts it back — a course returns with its original URL slug,
+  thumbnail and resources, re-filed in its category (recreated if that category
+  has been deleted meanwhile). Restoring a resource requires its course to
+  exist, so if you binned both, restore the course first.
+- **Delete forever** and **Empty bin** also erase the entry's uploaded files
+  from `data/uploads/`, which is what actually reclaims the storage. A file
+  still shared with a live resource, thumbnail or other bin entry is left alone.
+- Anything older than 30 days is purged automatically the next time an admin
+  page loads. Adjust `TRASH_RETENTION_DAYS` in `src/lib/data.ts` to change that.
 
 ## How it's built
 
@@ -113,14 +162,16 @@ admin section.
 
 | Path | Purpose |
 | --- | --- |
-| `src/app/page.tsx` | Skill catalogue with search and category filters |
+| `src/app/page.tsx` | Skill catalogue with search and group/category filters |
 | `src/app/skills/[slug]/page.tsx` | Skill detail page with the resource viewer |
 | `src/components/ResourceViewer.tsx` | PDF viewer, image lightbox, storyboard stepper, Vimeo embed |
-| `src/app/admin/` | Admin section: login, course list, skill editor |
-| `src/app/admin/actions.ts` | Server actions: auth, skill CRUD, uploads |
+| `src/app/admin/` | Admin section: login, course list, skill and resource editors, recycle bin |
+| `src/app/admin/categories/page.tsx` | Manage groups and categories |
+| `src/app/admin/actions.ts` | Server actions: auth, course/resource/taxonomy CRUD, uploads |
 | `src/app/files/[...path]/route.ts` | Serves uploaded files from `data/uploads` |
-| `src/lib/db.ts` | SQLite schema + first-run seed data |
+| `src/lib/db.ts` | SQLite schema, migrations + first-run seed data |
 | `src/lib/data.ts` | Typed query/CRUD helpers |
+| `src/lib/trash.ts` | Recycle bin: soft-delete, restore, purge |
 | `data/` | Database and uploads (git-ignored — back this up) |
 
 ## Backing up
