@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { ActionState } from "@/app/admin/actions";
 import type { ResourceType } from "@/lib/data";
+import { fileInputClass, inputClass, primaryButtonClass } from "./formStyles";
 
 const TYPES: { value: ResourceType; label: string; hint: string }[] = [
   { value: "video", label: "Vimeo video", hint: "Paste a Vimeo link, e.g. https://vimeo.com/76979871" },
@@ -12,19 +13,10 @@ const TYPES: { value: ResourceType; label: string; hint: string }[] = [
   { value: "storyboard", label: "Storyboard", hint: "Upload multiple images in step order, then add a caption for each step" },
 ];
 
-const inputClass =
-  "w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm shadow-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100";
-
-const fileInputClass =
-  "w-full text-sm text-stone-600 file:mr-4 file:rounded-lg file:border-0 file:bg-stone-100 file:px-4 file:py-2 file:text-sm file:font-medium file:text-stone-700 hover:file:bg-stone-200";
-
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <button
-      disabled={pending}
-      className="rounded-xl bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:opacity-60"
-    >
+    <button disabled={pending} className={primaryButtonClass}>
       {pending ? "Adding…" : "Add resource"}
     </button>
   );

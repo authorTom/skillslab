@@ -25,10 +25,28 @@ export default async function SkillPage({
       </Link>
 
       <header className="mt-4 max-w-3xl">
-        {skill.category && (
-          <span className="mb-3 inline-block rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700">
-            {skill.category}
-          </span>
+        {skill.category_slug && (
+          <p className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
+            {skill.group_slug && (
+              <>
+                <Link
+                  href={`/?group=${skill.group_slug}`}
+                  className="rounded-full bg-stone-100 px-2.5 py-0.5 font-medium text-stone-600 transition hover:bg-stone-200"
+                >
+                  {skill.group_name}
+                </Link>
+                <span aria-hidden className="text-stone-300">
+                  ›
+                </span>
+              </>
+            )}
+            <Link
+              href={`/?category=${skill.category_slug}`}
+              className="rounded-full bg-teal-50 px-2.5 py-0.5 font-medium text-teal-700 transition hover:bg-teal-100"
+            >
+              {skill.category_name}
+            </Link>
+          </p>
         )}
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{skill.title}</h1>
         {skill.description && (

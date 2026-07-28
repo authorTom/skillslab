@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
+import { categoryOptions, listGroups } from "@/lib/data";
 import { createSkillAction } from "../../actions";
 import SkillForm from "@/components/admin/SkillForm";
 
@@ -7,6 +8,8 @@ export const dynamic = "force-dynamic";
 
 export default async function NewSkillPage() {
   await requireAdmin();
+  const categories = categoryOptions();
+  const groups = listGroups();
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
@@ -18,6 +21,8 @@ export default async function NewSkillPage() {
       <div className="mt-8 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
         <SkillForm
           action={createSkillAction}
+          categories={categories}
+          groups={groups}
           submitLabel="Create skill"
           pendingLabel="Creating…"
         />

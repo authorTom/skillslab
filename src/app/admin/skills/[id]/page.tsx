@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
-import { getSkillById, listResources } from "@/lib/data";
+import { categoryOptions, getSkillById, listGroups, listResources } from "@/lib/data";
+import { categoryPath } from "@/lib/taxonomy";
 import { ResourceIcon, RESOURCE_TYPE_LABELS } from "@/components/ResourceIcon";
 import AddResourceForm from "@/components/admin/AddResourceForm";
 import ConfirmButton from "@/components/admin/ConfirmButton";
@@ -20,11 +21,11 @@ export default async function EditSkillPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ created?: string }>;
+  searchParams: Promise<{ created?: string; trashed?: string }>;
 }) {
   await requireAdmin();
   const { id: idParam } = await params;
-  const { created } = await searchParams;
+  const { created, trashed } = await searchParams;
   const id = Number(idParam);
   const skill = Number.isInteger(id) ? getSkillById(id) : undefined;
   if (!skill) notFound();
@@ -44,10 +45,23 @@ export default async function EditSkillPage({
         </Link>
       </div>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">{skill.title}</h1>
+      <p className="mt-1 text-sm text-stone-400">
+        {categoryPath(skill.group_name, skill.category_name)}
+      </p>
 
       {created && (
         <p className="mt-4 rounded-lg bg-teal-50 px-3 py-2 text-sm text-teal-800">
           Skill created. Now add its learning resources below.
+        </p>
+      )}
+
+      {trashed && (
+        <p className="mt-4 rounded-lg bg-teal-50 px-3 py-2 text-sm text-teal-800">
+          Resource moved to the{" "}
+          <Link href="/admin/trash" className="underline underline-offset-2">
+            recycle bin
+          </Link>
+          .
         </p>
       )}
 
@@ -57,6 +71,8 @@ export default async function EditSkillPage({
           <SkillForm
             action={updateSkillAction.bind(null, skill.id)}
             defaults={skill}
+            categories={categoryOptions()}
+            groups={listGroups()}
             currentThumbnail={skill.thumbnail || undefined}
             submitLabel="Save changes"
             pendingLabel="Saving…"
@@ -67,7 +83,8 @@ export default async function EditSkillPage({
       <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
         <h2 className="text-base font-semibold">Resources</h2>
         <p className="mt-1 text-sm text-stone-500">
-          Shown to learners in this order. Use the arrows to reorder.
+          Shown to learners in this order. Use the arrows to reorder, or Edit to change a
+          resource&apos;s title, link or files.
         </p>
 
         {resources.length === 0 ? (
@@ -102,9 +119,15 @@ export default async function EditSkillPage({
                       ↓
                     </button>
                   </form>
+                  <Link
+                    href={`/admin/resources/${resource.id}`}
+                    className="rounded-lg border border-stone-200 px-2.5 py-1 text-sm font-medium text-stone-700 transition hover:border-teal-300"
+                  >
+                    Edit
+                  </Link>
                   <form action={deleteResourceAction.bind(null, resource.id)}>
                     <ConfirmButton
-                      message={`Remove “${resource.title}”?`}
+                      message={`Move “${resource.title}” to the recycle bin?`}
                       className="rounded-lg px-2.5 py-1 text-sm text-red-600 transition hover:bg-red-50"
                     >
                       Remove

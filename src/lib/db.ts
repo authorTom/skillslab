@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
+import { slugify } from "./slug";
 
 export const DATA_DIR = path.join(process.cwd(), "data");
 export const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
@@ -18,11 +19,31 @@ export function getDb(): Database.Database {
   db.pragma("foreign_keys = ON");
 
   db.exec(`
+    -- Two-level taxonomy: a group holds categories, a category holds courses.
+    -- Both levels are optional, so a course can sit in a category with no group,
+    -- or in no category at all.
+    CREATE TABLE IF NOT EXISTS skill_groups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      position INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_id INTEGER REFERENCES skill_groups(id) ON DELETE SET NULL,
+      slug TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      position INTEGER NOT NULL DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS skills (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       slug TEXT NOT NULL UNIQUE,
       title TEXT NOT NULL,
-      category TEXT NOT NULL DEFAULT '',
+      category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
       description TEXT NOT NULL DEFAULT '',
       thumbnail TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -36,17 +57,109 @@ export function getDb(): Database.Database {
       content TEXT NOT NULL,
       position INTEGER NOT NULL DEFAULT 0
     );
+
+    -- Recycle bin. Deleted skills/resources are snapshotted here (payload is a
+    -- JSON restore blob) and their uploads are left on disk until the item is
+    -- purged, at which point the files listed in "files" are removed too.
+    CREATE TABLE IF NOT EXISTS trash (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL CHECK (kind IN ('skill', 'resource', 'thumbnail')),
+      label TEXT NOT NULL,
+      detail TEXT NOT NULL DEFAULT '',
+      payload TEXT NOT NULL,
+      files TEXT NOT NULL DEFAULT '[]',
+      deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
-  // Databases created before the thumbnail column existed.
-  const skillColumns = db.prepare("PRAGMA table_info(skills)").all() as { name: string }[];
-  if (!skillColumns.some((c) => c.name === "thumbnail")) {
-    db.exec("ALTER TABLE skills ADD COLUMN thumbnail TEXT NOT NULL DEFAULT ''");
-  }
-
+  migrate(db);
   seedIfEmpty(db);
   globalThis.__clinicalSkillsDb = db;
   return db;
+}
+
+/* ------------------------------------------------------------------ */
+/* Migrations for databases created by earlier versions.              */
+/* ------------------------------------------------------------------ */
+
+function migrate(db: Database.Database) {
+  const columns = () =>
+    (db.prepare("PRAGMA table_info(skills)").all() as { name: string }[]).map((c) => c.name);
+  const skillColumns = columns();
+
+  // Databases created before the thumbnail column existed.
+  if (!skillColumns.includes("thumbnail")) {
+    db.exec("ALTER TABLE skills ADD COLUMN thumbnail TEXT NOT NULL DEFAULT ''");
+  }
+
+  // Databases that stored the category as free text on the skill itself.
+  if (!skillColumns.includes("category_id")) {
+    db.exec(
+      "ALTER TABLE skills ADD COLUMN category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL"
+    );
+  }
+  if (skillColumns.includes("category")) migrateCategoryText(db);
+}
+
+/**
+ * Turns the old free-text `skills.category` into rows in `categories` (left
+ * ungrouped — groups are the admin's to arrange), then retires the column.
+ */
+function migrateCategoryText(db: Database.Database) {
+  const names = (
+    db.prepare("SELECT DISTINCT category FROM skills WHERE category <> ''").all() as {
+      category: string;
+    }[]
+  ).map((r) => r.category);
+
+  if (names.length > 0) {
+    const find = db.prepare("SELECT id FROM categories WHERE name = ? COLLATE NOCASE");
+    const insert = db.prepare(
+      "INSERT INTO categories (group_id, slug, name, position) VALUES (NULL, ?, ?, ?)"
+    );
+    const assign = db.prepare("UPDATE skills SET category_id = ? WHERE category = ? COLLATE NOCASE");
+    const nextPosition = db.prepare(
+      "SELECT COALESCE(MAX(position), -1) + 1 AS p FROM categories WHERE group_id IS NULL"
+    );
+
+    db.transaction(() => {
+      for (const name of names) {
+        const existing = find.get(name) as { id: number } | undefined;
+        const id =
+          existing?.id ??
+          Number(
+            insert.run(
+              uniqueSlugFor(db, "categories", name),
+              name,
+              (nextPosition.get() as { p: number }).p
+            ).lastInsertRowid
+          );
+        assign.run(id, name);
+      }
+    })();
+  }
+
+  // The data now lives in `categories`; keeping the column would let stale text
+  // reappear. Older SQLite builds can't drop a column — blank it out instead.
+  try {
+    db.exec("ALTER TABLE skills DROP COLUMN category");
+  } catch {
+    db.exec("UPDATE skills SET category = ''");
+  }
+}
+
+/** Slug for `name` that no row in `table` holds yet. */
+function uniqueSlugFor(
+  db: Database.Database,
+  table: "skills" | "categories" | "skill_groups",
+  name: string
+): string {
+  const base = slugify(name);
+  const taken = db.prepare(`SELECT id FROM ${table} WHERE slug = ?`);
+  let slug = base;
+  let n = 2;
+  while (taken.get(slug)) slug = `${base}-${n++}`;
+  return slug;
 }
 
 /* ------------------------------------------------------------------ */
@@ -84,8 +197,36 @@ function seedIfEmpty(db: Database.Database) {
   ]);
   const vitalsImage = seedVitalsImage();
 
+  // A starter taxonomy: two groups, each holding a couple of categories.
+  const insertGroup = db.prepare(
+    "INSERT INTO skill_groups (slug, name, description, position) VALUES (?, ?, ?, ?)"
+  );
+  const insertCategory = db.prepare(
+    "INSERT INTO categories (group_id, slug, name, position) VALUES (?, ?, ?, ?)"
+  );
+  const seedGroup = (name: string, description: string, position: number) =>
+    Number(insertGroup.run(slugify(name), name, description, position).lastInsertRowid);
+  const seedCategory = (name: string, groupId: number, position: number) =>
+    Number(insertCategory.run(groupId, slugify(name), name, position).lastInsertRowid);
+
+  const coreSkills = seedGroup(
+    "Core clinical skills",
+    "Everyday procedures and assessments practised in the skills lab.",
+    0
+  );
+  const emergencyCare = seedGroup(
+    "Emergency care",
+    "Recognising and responding to the acutely unwell patient.",
+    1
+  );
+  const categoryIds: Record<string, number> = {
+    Procedures: seedCategory("Procedures", coreSkills, 0),
+    Assessment: seedCategory("Assessment", coreSkills, 1),
+    Emergency: seedCategory("Emergency", emergencyCare, 0),
+  };
+
   const insertSkill = db.prepare(
-    "INSERT INTO skills (slug, title, category, description, thumbnail) VALUES (?, ?, ?, ?, ?)"
+    "INSERT INTO skills (slug, title, category_id, description, thumbnail) VALUES (?, ?, ?, ?, ?)"
   );
   const insertResource = db.prepare(
     "INSERT INTO resources (skill_id, type, title, content, position) VALUES (?, ?, ?, ?, ?)"
@@ -97,8 +238,13 @@ function seedIfEmpty(db: Database.Database) {
     description: string,
     initials: string
   ) =>
-    insertSkill.run(slug, title, category, description, seedThumbnail(slug, category, initials))
-      .lastInsertRowid;
+    insertSkill.run(
+      slug,
+      title,
+      categoryIds[category] ?? null,
+      description,
+      seedThumbnail(slug, category, initials)
+    ).lastInsertRowid;
 
   const venepuncture = seed(
     "venepuncture",

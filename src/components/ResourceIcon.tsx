@@ -1,11 +1,6 @@
 import type { ResourceType } from "@/lib/data";
 
-export const RESOURCE_TYPE_LABELS: Record<ResourceType, string> = {
-  video: "Video",
-  pdf: "PDF",
-  image: "Image",
-  storyboard: "Storyboard",
-};
+export { RESOURCE_TYPE_LABELS } from "@/lib/resource-types";
 
 const PATHS: Record<ResourceType, React.ReactNode> = {
   video: (
