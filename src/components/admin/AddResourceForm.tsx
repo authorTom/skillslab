@@ -4,13 +4,15 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { ActionState } from "@/app/admin/actions";
 import type { ResourceType } from "@/lib/data";
-import { fileInputClass, inputClass, primaryButtonClass } from "./formStyles";
+import MediaField from "./MediaField";
+import StoryboardField from "./StoryboardField";
+import { inputClass, primaryButtonClass } from "./formStyles";
 
 const TYPES: { value: ResourceType; label: string; hint: string }[] = [
   { value: "video", label: "Vimeo video", hint: "Paste a Vimeo link, e.g. https://vimeo.com/76979871" },
-  { value: "pdf", label: "PDF document", hint: "Upload a PDF file" },
-  { value: "image", label: "Image", hint: "Upload a PNG, JPG, GIF, WebP, AVIF or SVG image" },
-  { value: "storyboard", label: "Storyboard", hint: "Upload multiple images in step order, then add a caption for each step" },
+  { value: "pdf", label: "PDF document", hint: "Pick a PDF from the media library, or upload one" },
+  { value: "image", label: "Image", hint: "Pick an image from the media library, or upload one" },
+  { value: "storyboard", label: "Storyboard", hint: "Add images in step order, then caption each step" },
 ];
 
 function SubmitButton() {
@@ -31,15 +33,15 @@ export default function AddResourceForm({
 }) {
   const [state, formAction] = useActionState(action, {});
   const [type, setType] = useState<ResourceType>("video");
-  const [storyboardFiles, setStoryboardFiles] = useState<string[]>([]);
+  // Bumped after a successful add so the picked file clears with the form.
+  const [fieldKey, setFieldKey] = useState(0);
   const [handledState, setHandledState] = useState(state);
   const formRef = useRef<HTMLFormElement>(null);
   const selected = TYPES.find((t) => t.value === type)!;
 
-  // Clear the form after a successful add; validation errors keep the input intact.
   if (state !== handledState) {
     setHandledState(state);
-    if (state.success) setStoryboardFiles([]);
+    if (state.success) setFieldKey((key) => key + 1);
   }
   useEffect(() => {
     if (state.success) formRef.current?.reset();
@@ -65,10 +67,7 @@ export default function AddResourceForm({
             id="resource-type"
             name="type"
             value={type}
-            onChange={(e) => {
-              setType(e.target.value as ResourceType);
-              setStoryboardFiles([]);
-            }}
+            onChange={(e) => setType(e.target.value as ResourceType)}
             className={inputClass}
           >
             {TYPES.map((t) => (
@@ -91,57 +90,27 @@ export default function AddResourceForm({
         </div>
       </div>
 
-      <div>
-        {type === "video" ? (
+      {type === "video" ? (
+        <div>
           <input
-            key="url"
             name="url"
             type="url"
             required
             placeholder="https://vimeo.com/…"
             className={inputClass}
           />
-        ) : type === "storyboard" ? (
-          <input
-            key="files"
-            name="files"
-            type="file"
-            required
-            multiple
-            accept="image/*,.svg"
-            onChange={(e) =>
-              setStoryboardFiles(Array.from(e.target.files ?? []).map((f) => f.name))
-            }
-            className={fileInputClass}
-          />
-        ) : (
-          <input
-            key={type}
-            name="file"
-            type="file"
-            required
-            accept={type === "pdf" ? "application/pdf" : "image/*,.svg"}
-            className={fileInputClass}
-          />
-        )}
-        <p className="mt-1.5 text-xs text-stone-400">{selected.hint}</p>
-      </div>
-
-      {type === "storyboard" && storyboardFiles.length > 0 && (
-        <ol className="space-y-2 rounded-xl border border-stone-200 p-4">
-          {storyboardFiles.map((name, i) => (
-            <li key={`${name}-${i}`} className="flex items-center gap-3">
-              <span className="w-12 shrink-0 text-xs font-medium text-stone-400">
-                Step {i + 1}
-              </span>
-              <input
-                name="captions"
-                placeholder={`Caption for ${name}`}
-                className={`${inputClass} py-2`}
-              />
-            </li>
-          ))}
-        </ol>
+          <p className="mt-1.5 text-xs text-stone-400">{selected.hint}</p>
+        </div>
+      ) : type === "storyboard" ? (
+        <StoryboardField key={`storyboard-${fieldKey}`} />
+      ) : (
+        <MediaField
+          key={`${type}-${fieldKey}`}
+          name="mediaId"
+          kind={type === "pdf" ? "pdf" : "image"}
+          label="File"
+          hint={selected.hint}
+        />
       )}
 
       <SubmitButton />

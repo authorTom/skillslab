@@ -1,40 +1,5 @@
-// Upload helpers. Server-only — touches the filesystem.
-
-import fs from "fs";
-import path from "path";
-import { UPLOADS_DIR } from "./db";
-import { parseStoryboardFrames } from "./storyboard";
-import type { ResourceType } from "./data";
-
-/** Every upload a resource of this type owns (videos are remote, so none). */
-export function resourceFilePaths(type: ResourceType, content: string): string[] {
-  if (type === "video") return [];
-  if (type === "storyboard") return parseStoryboardFrames(content).map((frame) => frame.src);
-  return content ? [content] : [];
-}
-
-/** Resolves a `/files/…` path to disk, refusing anything outside the uploads dir. */
-export function resolvePublicFile(publicPath: string): string | null {
-  if (!publicPath.startsWith("/files/")) return null;
-  const resolved = path.resolve(UPLOADS_DIR, publicPath.slice("/files/".length));
-  return resolved.startsWith(UPLOADS_DIR + path.sep) ? resolved : null;
-}
-
-export function removePublicFile(publicPath: string) {
-  const resolved = resolvePublicFile(publicPath);
-  if (resolved) fs.rmSync(resolved, { force: true });
-}
-
-/** Size on disk in bytes, or 0 if the file is missing. */
-export function publicFileSize(publicPath: string): number {
-  const resolved = resolvePublicFile(publicPath);
-  if (!resolved) return 0;
-  try {
-    return fs.statSync(resolved).size;
-  } catch {
-    return 0;
-  }
-}
+// Display helpers for file sizes. Uploads themselves live in the media
+// library — see media.ts, which owns everything that touches the filesystem.
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -46,4 +11,9 @@ export function formatBytes(bytes: number): string {
     unit++;
   }
   return `${value >= 10 || Number.isInteger(value) ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
+
+/** "1200 × 800" for an image whose dimensions are known. */
+export function formatDimensions(width: number | null, height: number | null): string {
+  return width && height ? `${width} × ${height}` : "";
 }

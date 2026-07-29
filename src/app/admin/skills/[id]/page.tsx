@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { categoryOptions, getSkillById, listGroups, listResources } from "@/lib/data";
+import { getMedia } from "@/lib/media";
 import { categoryPath } from "@/lib/taxonomy";
 import { ResourceIcon, RESOURCE_TYPE_LABELS } from "@/components/ResourceIcon";
 import AddResourceForm from "@/components/admin/AddResourceForm";
@@ -73,7 +74,7 @@ export default async function EditSkillPage({
             defaults={skill}
             categories={categoryOptions()}
             groups={listGroups()}
-            currentThumbnail={skill.thumbnail || undefined}
+            thumbnail={skill.thumbnail_media_id ? getMedia(skill.thumbnail_media_id) : null}
             submitLabel="Save changes"
             pendingLabel="Saving…"
           />

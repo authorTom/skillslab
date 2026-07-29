@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
-import { listTrash, trashFiles, TRASH_RETENTION_DAYS, type TrashKind } from "@/lib/data";
-import { formatBytes, publicFileSize } from "@/lib/files";
+import { listTrash, TRASH_RETENTION_DAYS, type TrashKind } from "@/lib/data";
+import { formatBytes } from "@/lib/files";
+import { trashedBytes } from "@/lib/trash";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import {
   emptyTrashAction,
@@ -16,6 +17,7 @@ const KIND_LABELS: Record<TrashKind, string> = {
   skill: "Course",
   resource: "Resource",
   thumbnail: "Thumbnail",
+  media: "File",
 };
 
 /** Whole days since an ISO-ish `YYYY-MM-DD HH:MM:SS` UTC timestamp from SQLite. */
@@ -33,15 +35,11 @@ export default async function TrashPage({
   await purgeExpiredTrashAction();
   const { success, error } = await searchParams;
 
-  const items = listTrash().map((row) => {
-    const files = trashFiles(row);
-    return {
-      row,
-      fileCount: files.length,
-      bytes: files.reduce((total, file) => total + publicFileSize(file), 0),
-      age: daysSince(row.deleted_at),
-    };
-  });
+  const items = listTrash().map((row) => ({
+    row,
+    bytes: trashedBytes(row),
+    age: daysSince(row.deleted_at),
+  }));
   const totalBytes = items.reduce((total, item) => total + item.bytes, 0);
 
   return (
@@ -54,9 +52,9 @@ export default async function TrashPage({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Recycle bin</h1>
           <p className="mt-1 max-w-xl text-sm text-stone-500">
-            Deleted courses, resources and replaced files stay here for{" "}
-            {TRASH_RETENTION_DAYS} days, then are removed automatically. Deleting permanently also
-            erases the uploaded files from disk, freeing the storage.
+            Deleted courses, resources and library files stay here for {TRASH_RETENTION_DAYS} days,
+            then are removed automatically. Courses and resources only reference library files, so
+            deleting one never removes a file — purging a deleted file is what frees the storage.
           </p>
         </div>
         {items.length > 0 && (
@@ -85,7 +83,7 @@ export default async function TrashPage({
         </div>
       ) : (
         <ul className="mt-8 divide-y divide-stone-200 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
-          {items.map(({ row, fileCount, bytes, age }) => (
+          {items.map(({ row, bytes, age }) => (
             <li
               key={row.id}
               className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-4 sm:flex-nowrap"
@@ -102,7 +100,6 @@ export default async function TrashPage({
                   {age === 0 ? "Deleted today" : age === 1 ? "Deleted yesterday" : `Deleted ${age} days ago`}
                   {" · "}
                   {`purges in ${Math.max(0, TRASH_RETENTION_DAYS - age)} days`}
-                  {fileCount > 0 && ` · ${fileCount} file${fileCount === 1 ? "" : "s"}`}
                   {bytes > 0 && ` · ${formatBytes(bytes)}`}
                 </p>
               </div>
@@ -115,7 +112,7 @@ export default async function TrashPage({
                 <form action={purgeTrashAction.bind(null, row.id)}>
                   <ConfirmButton
                     message={`Permanently delete “${row.label}”${
-                      fileCount > 0 ? ` and its ${fileCount} file(s)` : ""
+                      bytes > 0 ? " and its file" : ""
                     }? This cannot be undone.`}
                     className="rounded-lg px-3 py-1.5 text-red-600 transition hover:bg-red-50"
                   >

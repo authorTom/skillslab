@@ -1,10 +1,16 @@
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
+import { imageSize } from "./image-size";
+import { mediaRef } from "./media-refs";
+import { MEDIA_EXTENSIONS, MIME_TYPES, mediaKindFor } from "./media-types";
 import { slugify } from "./slug";
 
 export const DATA_DIR = path.join(process.cwd(), "data");
 export const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
+
+/** Bumped when a one-way schema migration has to run exactly once. */
+const SCHEMA_VERSION = 1;
 
 declare global {
   var __clinicalSkillsDb: Database.Database | undefined;
@@ -19,6 +25,46 @@ export function getDb(): Database.Database {
   db.pragma("foreign_keys = ON");
 
   db.exec(`
+    -- The media library. Every uploaded file is a row here, and courses point
+    -- at it by id, so one file can serve any number of courses.
+    --
+    -- "storage_name" is the name on disk and never changes; "filename" is the
+    -- editable display and download name. Keeping them apart is what makes a
+    -- rename safe — no file moves and no reference can be left dangling.
+    CREATE TABLE IF NOT EXISTS media_folders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      position INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS media (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      folder_id INTEGER REFERENCES media_folders(id) ON DELETE SET NULL,
+      storage_name TEXT NOT NULL UNIQUE,
+      filename TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      alt TEXT NOT NULL DEFAULT '',
+      kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf')),
+      mime TEXT NOT NULL,
+      bytes INTEGER NOT NULL DEFAULT 0,
+      width INTEGER,
+      height INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS media_tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS media_tag_links (
+      media_id INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+      tag_id INTEGER NOT NULL REFERENCES media_tags(id) ON DELETE CASCADE,
+      PRIMARY KEY (media_id, tag_id)
+    );
+
     -- Two-level taxonomy: a group holds categories, a category holds courses.
     -- Both levels are optional, so a course can sit in a category with no group,
     -- or in no category at all.
@@ -45,10 +91,12 @@ export function getDb(): Database.Database {
       title TEXT NOT NULL,
       category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
       description TEXT NOT NULL DEFAULT '',
-      thumbnail TEXT NOT NULL DEFAULT '',
+      thumbnail_media_id INTEGER REFERENCES media(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- A resource's content is a Vimeo URL for videos, "media:<id>" for a PDF or
+    -- image, and a JSON array of {media_id, caption} steps for a storyboard.
     CREATE TABLE IF NOT EXISTS resources (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       skill_id INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
@@ -58,39 +106,108 @@ export function getDb(): Database.Database {
       position INTEGER NOT NULL DEFAULT 0
     );
 
-    -- Recycle bin. Deleted skills/resources are snapshotted here (payload is a
-    -- JSON restore blob) and their uploads are left on disk until the item is
-    -- purged, at which point the files listed in "files" are removed too.
+    -- Recycle bin. Deleted items are snapshotted here as a JSON restore blob.
+    -- Only a binned media item still owns a file on disk; purging it is what
+    -- reclaims the storage. Courses and resources reference library files
+    -- rather than owning them, so deleting one never removes a file.
     CREATE TABLE IF NOT EXISTS trash (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      kind TEXT NOT NULL CHECK (kind IN ('skill', 'resource', 'thumbnail')),
+      kind TEXT NOT NULL CHECK (kind IN ('skill', 'resource', 'thumbnail', 'media')),
       label TEXT NOT NULL,
       detail TEXT NOT NULL DEFAULT '',
       payload TEXT NOT NULL,
-      files TEXT NOT NULL DEFAULT '[]',
       deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
 
   migrate(db);
+  migrateToMediaLibrary(db);
   seedIfEmpty(db);
   globalThis.__clinicalSkillsDb = db;
   return db;
 }
 
 /* ------------------------------------------------------------------ */
+/* Media rows                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Records a file that is already sitting in the uploads directory as a library
+ * item, reading its size and dimensions from disk. A file that has since gone
+ * missing still gets a row — the library shows it so the admin can see, and
+ * clear up, what a course is pointing at.
+ */
+export function insertMediaFile(
+  db: Database.Database,
+  storageName: string,
+  filename: string,
+  title = ""
+): number {
+  const file = probeStoredFile(storageName);
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO media (storage_name, filename, title, kind, mime, bytes, width, height)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(storageName, filename, title, file.kind, file.mime, file.bytes, file.width, file.height)
+      .lastInsertRowid
+  );
+}
+
+export interface StoredFile {
+  kind: "image" | "pdf";
+  mime: string;
+  bytes: number;
+  width: number | null;
+  height: number | null;
+}
+
+/** What can be learned about a file in the uploads directory by reading it. */
+export function probeStoredFile(storageName: string): StoredFile {
+  const ext = path.extname(storageName).toLowerCase();
+  const kind = mediaKindFor(ext) ?? "image";
+  const file = path.join(UPLOADS_DIR, storageName);
+
+  let bytes = 0;
+  let size: { width: number; height: number } | null = null;
+  try {
+    bytes = fs.statSync(file).size;
+    if (kind === "image") size = imageSize(readHeader(file), ext);
+  } catch {
+    // Missing or unreadable — the row is still worth having.
+  }
+
+  return {
+    kind,
+    mime: MIME_TYPES[ext] ?? "application/octet-stream",
+    bytes,
+    width: size?.width ?? null,
+    height: size?.height ?? null,
+  };
+}
+
+/** First 64 KB of a file — every format's dimensions live in its header. */
+function readHeader(file: string, length = 65_536): Buffer {
+  const handle = fs.openSync(file, "r");
+  try {
+    const buffer = Buffer.alloc(length);
+    const read = fs.readSync(handle, buffer, 0, length, 0);
+    return buffer.subarray(0, read);
+  } finally {
+    fs.closeSync(handle);
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Migrations for databases created by earlier versions.              */
 /* ------------------------------------------------------------------ */
 
-function migrate(db: Database.Database) {
-  const columns = () =>
-    (db.prepare("PRAGMA table_info(skills)").all() as { name: string }[]).map((c) => c.name);
-  const skillColumns = columns();
+const columnsOf = (db: Database.Database, table: string) =>
+  (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
 
-  // Databases created before the thumbnail column existed.
-  if (!skillColumns.includes("thumbnail")) {
-    db.exec("ALTER TABLE skills ADD COLUMN thumbnail TEXT NOT NULL DEFAULT ''");
-  }
+function migrate(db: Database.Database) {
+  const skillColumns = columnsOf(db, "skills");
 
   // Databases that stored the category as free text on the skill itself.
   if (!skillColumns.includes("category_id")) {
@@ -99,6 +216,13 @@ function migrate(db: Database.Database) {
     );
   }
   if (skillColumns.includes("category")) migrateCategoryText(db);
+
+  // Databases from before the media library, where the thumbnail was a path.
+  if (!skillColumns.includes("thumbnail_media_id")) {
+    db.exec(
+      "ALTER TABLE skills ADD COLUMN thumbnail_media_id INTEGER REFERENCES media(id) ON DELETE SET NULL"
+    );
+  }
 }
 
 /**
@@ -141,10 +265,209 @@ function migrateCategoryText(db: Database.Database) {
 
   // The data now lives in `categories`; keeping the column would let stale text
   // reappear. Older SQLite builds can't drop a column — blank it out instead.
+  dropColumn(db, "skills", "category");
+}
+
+function dropColumn(db: Database.Database, table: string, column: string) {
   try {
-    db.exec("ALTER TABLE skills DROP COLUMN category");
+    db.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
   } catch {
-    db.exec("UPDATE skills SET category = ''");
+    db.exec(`UPDATE ${table} SET ${column} = ''`);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Migration into the media library                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Before the media library, every upload was owned by whatever referenced it:
+ * a `/files/…` path in `skills.thumbnail`, in `resources.content`, or in a
+ * storyboard's frames. This gives each of those files a row in `media` and
+ * repoints the references at it, then adopts anything else sitting in the
+ * uploads directory so the library shows the whole of what is on disk.
+ *
+ * One-way, and guarded by the schema version so it runs exactly once.
+ */
+function migrateToMediaLibrary(db: Database.Database) {
+  if (Number(db.pragma("user_version", { simple: true })) >= SCHEMA_VERSION) return;
+
+  const hasLegacyThumbnail = columnsOf(db, "skills").includes("thumbnail");
+  const byPath = new Map<string, number>();
+  /** Media id for a `/files/<name>` path, importing it on first sight. */
+  const adopt = (publicPath: string, title: string): number | null => {
+    const name = legacyStorageName(publicPath);
+    if (!name) return null;
+    const existing = byPath.get(name);
+    if (existing) return existing;
+    const id = insertMediaFile(db, name, name, title);
+    byPath.set(name, id);
+    return id;
+  };
+
+  db.transaction(() => {
+    if (hasLegacyThumbnail) {
+      const skills = db
+        .prepare("SELECT id, title, thumbnail FROM skills WHERE thumbnail <> ''")
+        .all() as { id: number; title: string; thumbnail: string }[];
+      const setThumbnail = db.prepare("UPDATE skills SET thumbnail_media_id = ? WHERE id = ?");
+      for (const skill of skills) {
+        const id = adopt(skill.thumbnail, `${skill.title} thumbnail`);
+        if (id) setThumbnail.run(id, skill.id);
+      }
+    }
+
+    const resources = db
+      .prepare("SELECT id, type, title, content FROM resources WHERE type <> 'video'")
+      .all() as { id: number; type: string; title: string; content: string }[];
+    const setContent = db.prepare("UPDATE resources SET content = ? WHERE id = ?");
+    for (const resource of resources) {
+      if (resource.type === "storyboard") {
+        const frames = legacyFrames(resource.content)
+          .map((frame, i) => ({
+            media_id: adopt(frame.src, `${resource.title} — step ${i + 1}`),
+            caption: frame.caption,
+          }))
+          .filter((frame): frame is { media_id: number; caption: string } => frame.media_id !== null);
+        setContent.run(JSON.stringify(frames), resource.id);
+      } else {
+        const id = adopt(resource.content, resource.title);
+        if (id) setContent.run(mediaRef(id), resource.id);
+      }
+    }
+
+    migrateTrash(db, adopt);
+    if (hasLegacyThumbnail) dropColumn(db, "skills", "thumbnail");
+    adoptLooseUploads(db, byPath);
+  })();
+
+  db.pragma(`user_version = ${SCHEMA_VERSION}`);
+}
+
+/** The `<name>` of a legacy `/files/<name>` path, or null if it isn't one. */
+function legacyStorageName(publicPath: string): string | null {
+  if (!publicPath.startsWith("/files/")) return null;
+  const name = path.basename(publicPath.slice("/files/".length));
+  return name && mediaKindFor(path.extname(name).toLowerCase()) ? name : null;
+}
+
+/** Frames as they were stored before the library: paths, or {src, caption}. */
+function legacyFrames(content: string): { src: string; caption: string }[] {
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((frame) => {
+        if (typeof frame === "string") return { src: frame, caption: "" };
+        const record = frame as Record<string, unknown> | null;
+        return { src: String(record?.src ?? ""), caption: String(record?.caption ?? "") };
+      })
+      .filter((frame) => frame.src);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Rewrites recycle-bin snapshots so a restore produces media references. The
+ * old `files` column goes: those uploads now belong to the library, and only a
+ * binned media item still holds a file of its own.
+ */
+function migrateTrash(db: Database.Database, adopt: (path: string, title: string) => number | null) {
+  const rows = db.prepare("SELECT id, kind, label, payload FROM trash").all() as {
+    id: number;
+    kind: string;
+    label: string;
+    payload: string;
+  }[];
+  const update = db.prepare("UPDATE trash SET payload = ? WHERE id = ?");
+
+  for (const row of rows) {
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(row.payload) as Record<string, unknown>;
+    } catch {
+      continue; // Unreadable snapshot — the purge will clear it.
+    }
+
+    if (typeof payload.thumbnail === "string" && payload.thumbnail) {
+      payload.thumbnail_media_id = adopt(payload.thumbnail, `${row.label} thumbnail`);
+      delete payload.thumbnail;
+    }
+    if (typeof payload.content === "string") {
+      payload.content = rewriteSnapshotContent(payload, row.label, adopt);
+    }
+    if (Array.isArray(payload.resources)) {
+      payload.resources = payload.resources.map((entry) => {
+        const resource = entry as Record<string, unknown>;
+        return { ...resource, content: rewriteSnapshotContent(resource, row.label, adopt) };
+      });
+    }
+    update.run(JSON.stringify(payload), row.id);
+  }
+
+  rebuildTrashTable(db);
+}
+
+/**
+ * The bin's `kind` is a CHECK constraint, which SQLite can only widen by
+ * rebuilding the table. The same pass drops the old `files` column, since a
+ * course or resource no longer owns the uploads it points at.
+ */
+function rebuildTrashTable(db: Database.Database) {
+  const table = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'trash'")
+    .get() as { sql: string } | undefined;
+  if (!table || table.sql.includes("'media'")) return;
+
+  db.exec(`
+    CREATE TABLE trash_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL CHECK (kind IN ('skill', 'resource', 'thumbnail', 'media')),
+      label TEXT NOT NULL,
+      detail TEXT NOT NULL DEFAULT '',
+      payload TEXT NOT NULL,
+      deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    INSERT INTO trash_new (id, kind, label, detail, payload, deleted_at)
+      SELECT id, kind, label, detail, payload, deleted_at FROM trash;
+    DROP TABLE trash;
+    ALTER TABLE trash_new RENAME TO trash;
+  `);
+}
+
+function rewriteSnapshotContent(
+  snapshot: Record<string, unknown>,
+  label: string,
+  adopt: (path: string, title: string) => number | null
+): string {
+  const type = String(snapshot.type ?? "");
+  const content = String(snapshot.content ?? "");
+  if (type === "video") return content;
+  if (type === "storyboard") {
+    return JSON.stringify(
+      legacyFrames(content)
+        .map((frame, i) => ({ media_id: adopt(frame.src, `${label} — step ${i + 1}`), caption: frame.caption }))
+        .filter((frame) => frame.media_id !== null)
+    );
+  }
+  const id = adopt(content, label);
+  return id ? mediaRef(id) : content;
+}
+
+/** Adds any supported file already in the uploads directory to the library. */
+function adoptLooseUploads(db: Database.Database, byPath: Map<string, number>) {
+  let names: string[];
+  try {
+    names = fs.readdirSync(UPLOADS_DIR);
+  } catch {
+    return;
+  }
+  const known = db.prepare("SELECT id FROM media WHERE storage_name = ?");
+  for (const name of names) {
+    if (!MEDIA_EXTENSIONS.includes(path.extname(name).toLowerCase())) continue;
+    if (byPath.has(name) || known.get(name)) continue;
+    insertMediaFile(db, name, name);
   }
 }
 
@@ -171,8 +494,8 @@ function seedIfEmpty(db: Database.Database) {
   const count = db.prepare("SELECT COUNT(*) AS n FROM skills").get() as { n: number };
   if (count.n > 0) return;
 
-  const storyboardFrames = seedStoryboardFrames();
-  const guidePdf = seedPdf("venepuncture-guide.pdf", "Venepuncture: Procedure Guide", [
+  const storyboardFrames = seedStoryboardFrames(db);
+  const guidePdf = seedPdf(db, "venepuncture-guide.pdf", "Venepuncture: Procedure Guide", [
     "This is a sample seeded document to demonstrate the PDF viewer.",
     "Replace it with your own materials via the admin section.",
     "",
@@ -185,7 +508,7 @@ function seedIfEmpty(db: Database.Database) {
     "7. Release the tourniquet, withdraw and apply pressure.",
     "8. Label samples at the bedside and dispose of sharps safely.",
   ]);
-  const blsPdf = seedPdf("bls-algorithm.pdf", "Basic Life Support: Algorithm Summary", [
+  const blsPdf = seedPdf(db, "bls-algorithm.pdf", "Basic Life Support: Algorithm Summary", [
     "Sample seeded document. Replace via the admin section.",
     "",
     "1. Confirm scene safety.",
@@ -195,7 +518,7 @@ function seedIfEmpty(db: Database.Database) {
     "5. Give 30 compressions to 2 ventilations.",
     "6. Attach the AED as soon as it arrives and follow prompts.",
   ]);
-  const vitalsImage = seedVitalsImage();
+  const vitalsImage = seedVitalsImage(db);
 
   // A starter taxonomy: two groups, each holding a couple of categories.
   const insertGroup = db.prepare(
@@ -226,7 +549,7 @@ function seedIfEmpty(db: Database.Database) {
   };
 
   const insertSkill = db.prepare(
-    "INSERT INTO skills (slug, title, category_id, description, thumbnail) VALUES (?, ?, ?, ?, ?)"
+    "INSERT INTO skills (slug, title, category_id, description, thumbnail_media_id) VALUES (?, ?, ?, ?, ?)"
   );
   const insertResource = db.prepare(
     "INSERT INTO resources (skill_id, type, title, content, position) VALUES (?, ?, ?, ?, ?)"
@@ -243,7 +566,7 @@ function seedIfEmpty(db: Database.Database) {
       title,
       categoryIds[category] ?? null,
       description,
-      seedThumbnail(slug, category, initials)
+      seedThumbnail(db, slug, title, category, initials)
     ).lastInsertRowid;
 
   const venepuncture = seed(
@@ -255,7 +578,7 @@ function seedIfEmpty(db: Database.Database) {
   );
   insertResource.run(venepuncture, "video", "Demonstration video", "https://vimeo.com/76979871", 0);
   insertResource.run(venepuncture, "storyboard", "Step-by-step storyboard", JSON.stringify(storyboardFrames), 1);
-  insertResource.run(venepuncture, "pdf", "Procedure guide (PDF)", guidePdf, 2);
+  insertResource.run(venepuncture, "pdf", "Procedure guide (PDF)", mediaRef(guidePdf), 2);
 
   const cannulation = seed(
     "peripheral-iv-cannulation",
@@ -273,7 +596,7 @@ function seedIfEmpty(db: Database.Database) {
     "Adult basic life support: recognising cardiac arrest, high-quality chest compressions, rescue breaths and safe defibrillator use.",
     "BLS"
   );
-  insertResource.run(bls, "pdf", "Algorithm summary (PDF)", blsPdf, 0);
+  insertResource.run(bls, "pdf", "Algorithm summary (PDF)", mediaRef(blsPdf), 0);
 
   const vitals = seed(
     "vital-signs-measurement",
@@ -282,7 +605,7 @@ function seedIfEmpty(db: Database.Database) {
     "Accurate measurement and interpretation of temperature, pulse, respiratory rate, blood pressure and oxygen saturation.",
     "VS"
   );
-  insertResource.run(vitals, "image", "Equipment overview", vitalsImage, 0);
+  insertResource.run(vitals, "image", "Equipment overview", mediaRef(vitalsImage), 0);
 
   seed(
     "urinary-catheterisation",
@@ -307,7 +630,13 @@ const THUMBNAIL_PALETTES: Record<string, { bg: string; shape: string; accent: st
   Assessment: { bg: "#e0f2fe", shape: "#bae6fd", accent: "#0369a1" },
 };
 
-function seedThumbnail(slug: string, category: string, initials: string): string {
+function seedThumbnail(
+  db: Database.Database,
+  slug: string,
+  title: string,
+  category: string,
+  initials: string
+): number {
   const palette = THUMBNAIL_PALETTES[category] ?? THUMBNAIL_PALETTES.Procedures;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
   <rect width="800" height="450" fill="${palette.bg}"/>
@@ -316,15 +645,21 @@ function seedThumbnail(slug: string, category: string, initials: string): string
   <circle cx="400" cy="225" r="110" fill="${palette.accent}"/>
   <text x="400" y="252" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="76" font-weight="bold" fill="#ffffff">${initials}</text>
 </svg>`;
-  return saveSeedFile(`seed-thumb-${slug}.svg`, svg);
+  return saveSeedFile(db, `seed-thumb-${slug}.svg`, svg, `${title} thumbnail`);
 }
 
-function saveSeedFile(name: string, data: Buffer | string): string {
+/** Writes a seeded file and records it in the library. Returns its media id. */
+function saveSeedFile(
+  db: Database.Database,
+  name: string,
+  data: Buffer | string,
+  title: string
+): number {
   fs.writeFileSync(path.join(UPLOADS_DIR, name), data);
-  return `/files/${name}`;
+  return insertMediaFile(db, name, name, title);
 }
 
-function seedStoryboardFrames(): { src: string; caption: string }[] {
+function seedStoryboardFrames(db: Database.Database): { media_id: number; caption: string }[] {
   const steps = [
     ["1", "Prepare", "Confirm identity, gain consent and perform hand hygiene"],
     ["2", "Tourniquet", "Apply the tourniquet and palpate to select a vein"],
@@ -342,11 +677,14 @@ function seedStoryboardFrames(): { src: string; caption: string }[] {
   <text x="64" y="330" font-family="Helvetica, Arial, sans-serif" font-size="42" font-weight="bold" fill="#134e4a">${title}</text>
   <text x="64" y="440" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#a8a29e">Sample storyboard frame — replace via the admin section</text>
 </svg>`;
-    return { src: saveSeedFile(`seed-venepuncture-step-${i + 1}.svg`, svg), caption };
+    return {
+      media_id: saveSeedFile(db, `seed-venepuncture-step-${i + 1}.svg`, svg, `Venepuncture step ${i + 1}`),
+      caption,
+    };
   });
 }
 
-function seedVitalsImage(): string {
+function seedVitalsImage(db: Database.Database): number {
   const items = [
     ["Thermometer", "Temperature"],
     ["Watch / monitor", "Pulse & respirations"],
@@ -368,11 +706,16 @@ function seedVitalsImage(): string {
   ${boxes}
   <text x="60" y="450" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#a8a29e">Sample image — replace via the admin section</text>
 </svg>`;
-  return saveSeedFile("seed-vitals-equipment.svg", svg);
+  return saveSeedFile(db, "seed-vitals-equipment.svg", svg, "Vital signs equipment");
 }
 
 /** Builds a minimal but valid one-page PDF with the given title and lines. */
-function seedPdf(name: string, title: string, lines: string[]): string {
+function seedPdf(
+  db: Database.Database,
+  name: string,
+  title: string,
+  lines: string[]
+): number {
   const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   let text = `BT /F1 20 Tf 72 720 Td (${esc(title)}) Tj ET\n`;
   lines.forEach((line, i) => {
@@ -400,5 +743,5 @@ function seedPdf(name: string, title: string, lines: string[]): string {
   });
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
 
-  return saveSeedFile(name, Buffer.from(pdf, "latin1"));
+  return saveSeedFile(db, name, Buffer.from(pdf, "latin1"), title);
 }

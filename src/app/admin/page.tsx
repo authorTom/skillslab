@@ -65,6 +65,12 @@ export default async function AdminPage() {
             Groups &amp; categories
           </Link>
           <Link
+            href="/admin/media"
+            className="rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-700 transition hover:border-teal-300"
+          >
+            Media library
+          </Link>
+          <Link
             href="/admin/trash"
             className="rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-700 transition hover:border-teal-300"
           >

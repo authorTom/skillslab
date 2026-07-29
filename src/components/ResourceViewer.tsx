@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Resource } from "@/lib/data";
-import { parseStoryboardFrames, type StoryboardFrame } from "@/lib/storyboard";
+import type { ResolvedFrame, ResolvedResource } from "@/lib/media";
 import { ResourceIcon, RESOURCE_TYPE_LABELS } from "./ResourceIcon";
 
 /** Turns a Vimeo URL (with optional privacy hash) into a player embed URL. */
@@ -15,7 +14,7 @@ function vimeoEmbedUrl(url: string): string | null {
   return `https://player.vimeo.com/video/${id}${hash ? `?h=${hash}` : ""}`;
 }
 
-export default function ResourceViewer({ resources }: { resources: Resource[] }) {
+export default function ResourceViewer({ resources }: { resources: ResolvedResource[] }) {
   const [activeId, setActiveId] = useState(resources[0]?.id);
   const active = resources.find((r) => r.id === activeId) ?? resources[0];
 
@@ -64,19 +63,30 @@ export default function ResourceViewer({ resources }: { resources: Resource[] })
   );
 }
 
-function ResourcePanel({ resource }: { resource: Resource }) {
+function ResourcePanel({ resource }: { resource: ResolvedResource }) {
+  if (resource.broken) return <MissingPanel />;
+
   switch (resource.type) {
     case "video":
-      return <VideoPanel url={resource.content} />;
+      return <VideoPanel url={resource.src} />;
     case "pdf":
-      return <PdfPanel src={resource.content} title={resource.title} />;
+      return <PdfPanel src={resource.src} title={resource.title} />;
     case "image":
-      return <ImagePanel src={resource.content} alt={resource.title} />;
+      return <ImagePanel src={resource.src} alt={resource.alt || resource.title} />;
     case "storyboard":
-      return (
-        <StoryboardPanel frames={parseStoryboardFrames(resource.content)} title={resource.title} />
-      );
+      return <StoryboardPanel frames={resource.frames} title={resource.title} />;
   }
+}
+
+/** The library file this resource points at has been deleted or lost. */
+function MissingPanel() {
+  return (
+    <Card>
+      <p className="p-8 text-sm text-stone-500">
+        This resource&apos;s file is no longer available.
+      </p>
+    </Card>
+  );
 }
 
 function VideoPanel({ url }: { url: string }) {
@@ -164,7 +174,7 @@ function ImagePanel({ src, alt }: { src: string; alt: string }) {
   );
 }
 
-function StoryboardPanel({ frames, title }: { frames: StoryboardFrame[]; title: string }) {
+function StoryboardPanel({ frames, title }: { frames: ResolvedFrame[]; title: string }) {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -192,7 +202,9 @@ function StoryboardPanel({ frames, title }: { frames: StoryboardFrame[]; title: 
           <img
             src={frames[index].src}
             alt={
-              frames[index].caption || `${title} — frame ${index + 1} of ${frames.length}`
+              frames[index].alt ||
+              frames[index].caption ||
+              `${title} — frame ${index + 1} of ${frames.length}`
             }
             className="mx-auto max-h-[65vh] w-auto max-w-full"
           />
@@ -226,7 +238,7 @@ function StoryboardPanel({ frames, title }: { frames: StoryboardFrame[]; title: 
       <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
         {frames.map((frame, i) => (
           <button
-            key={frame.src + i}
+            key={frame.media_id + "-" + i}
             onClick={() => setIndex(i)}
             title={frame.caption || undefined}
             className={`h-14 w-20 shrink-0 overflow-hidden rounded-lg border-2 transition ${
