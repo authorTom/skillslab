@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getSkillBySlug, listResources } from "@/lib/data";
+import { getSkillBySlug } from "@/lib/data";
+import { listResolvedResources } from "@/lib/media";
 import ResourceViewer from "@/components/ResourceViewer";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ export default async function SkillPage({
   const { slug } = await params;
   const skill = getSkillBySlug(slug);
   if (!skill) notFound();
-  const resources = listResources(skill.id);
+  const resources = listResolvedResources(skill.id);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">

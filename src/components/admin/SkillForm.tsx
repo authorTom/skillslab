@@ -3,6 +3,8 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import type { ActionState } from "@/app/admin/actions";
+import type { MediaItem } from "@/lib/media";
+import MediaField from "./MediaField";
 import SkillFields, { type CategoryOption, type SkillDefaults } from "./SkillFields";
 
 function SubmitButton({ label, pendingLabel }: { label: string; pendingLabel: string }) {
@@ -22,7 +24,7 @@ export default function SkillForm({
   defaults,
   categories,
   groups,
-  currentThumbnail,
+  thumbnail,
   submitLabel,
   pendingLabel,
 }: {
@@ -30,7 +32,7 @@ export default function SkillForm({
   defaults?: SkillDefaults;
   categories: CategoryOption[];
   groups: { id: number; name: string }[];
-  currentThumbnail?: string;
+  thumbnail?: MediaItem | null;
   submitLabel: string;
   pendingLabel: string;
 }) {
@@ -47,36 +49,14 @@ export default function SkillForm({
 
       <SkillFields defaults={defaults} categories={categories} groups={groups} />
 
-      <div>
-        <label htmlFor="thumbnail" className="mb-1.5 block text-sm font-medium text-stone-700">
-          Thumbnail <span className="font-normal text-stone-400">(optional)</span>
-        </label>
-        {currentThumbnail && (
-          <div className="mb-3 flex items-center gap-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={currentThumbnail}
-              alt="Current thumbnail"
-              className="aspect-video w-40 rounded-lg border border-stone-200 object-cover"
-            />
-            <label className="flex items-center gap-2 text-sm text-stone-600">
-              <input type="checkbox" name="removeThumbnail" value="1" className="accent-teal-600" />
-              Remove thumbnail
-            </label>
-          </div>
-        )}
-        <input
-          id="thumbnail"
-          name="thumbnail"
-          type="file"
-          accept="image/*,.svg"
-          className="w-full text-sm text-stone-600 file:mr-4 file:rounded-lg file:border-0 file:bg-stone-100 file:px-4 file:py-2 file:text-sm file:font-medium file:text-stone-700 hover:file:bg-stone-200"
-        />
-        <p className="mt-1.5 text-xs text-stone-400">
-          Shown on the skill&apos;s card in the catalogue.
-          {currentThumbnail && " Uploading a new image replaces the current one."}
-        </p>
-      </div>
+      <MediaField
+        name="thumbnailMediaId"
+        kind="image"
+        initial={thumbnail}
+        removeName="removeThumbnail"
+        label="Thumbnail (optional)"
+        hint="Shown on the course's card in the catalogue. Several courses can share one image."
+      />
 
       <SubmitButton label={submitLabel} pendingLabel={pendingLabel} />
     </form>

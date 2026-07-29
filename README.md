@@ -41,6 +41,8 @@ LMS integration; it is a well-organised library, not a learning platform.
   skills, organise them into groups and categories, upload PDFs and images,
   build storyboards, attach Vimeo videos by pasting the URL, and reorder the
   resources shown for each skill.
+- **Media library** — every upload in one place, shared between courses: folders,
+  tags, search, rename, replace, and a picker on every form.
 - **Nothing lost by accident** — resources stay editable after they are added,
   and deletions go to a recycle bin.
 - **Responsive** — desktop, tablet and mobile, built minimalist throughout.
@@ -130,25 +132,53 @@ Upgrading an existing installation? The free-text category on each course is
 converted into a real category the first time the app starts. Those categories
 start out without a group, so open **/admin/categories** to arrange them.
 
+## The media library
+
+Uploads are not owned by the course that first used them. Every file is an item
+in the media library at **/admin/media**, and courses point at it — so one PDF or
+poster can serve as many courses as you like, uploaded once.
+
+- **Add files** by dragging them onto the library, or from the picker on any
+  course or resource form. PNG, JPG, GIF, WebP, AVIF, SVG and PDF are accepted.
+- **Organise** with folders (one per file) and tags (as many as you like), then
+  filter the library by either, search names, titles and alt text, and sort by
+  newest, name or size.
+- **Rename freely.** A file's display name and the name it is stored under on
+  disk are two different things, so renaming updates every course at once and
+  can never leave a broken link — even for a URL someone bookmarked earlier.
+- **Edit the details** of any file: its name, a title, alt text for screen
+  readers, its folder and its tags. The detail page also lists every course and
+  resource using it, and its size, dimensions and type.
+- **Replace a file** to publish a new version in place: everything pointing at
+  it picks up the new file, the name stays as you set it, and the version it
+  replaced goes to the recycle bin.
+- **Delete** is refused while anything still uses a file, and says what. Files
+  nothing uses go to the recycle bin, and select several with the checkboxes to
+  move, tag or delete them together.
+
+Upgrading an existing installation? Every file already in `data/uploads/` is
+adopted into the library the first time the app starts, and courses are
+repointed at it — including anything left over that no course was using.
+
 ## Editing and deleting
 
 Every resource has an **Edit** button (`/admin/resources/<id>`). What you can
 change depends on the type: a video's title and Vimeo link; a PDF's or image's
-title and the file itself; a storyboard's title, per-step captions, step order
-and which steps it has. A resource's *type* can't be changed — remove it and add
-a new one instead.
+title and which library file it points at; a storyboard's title, per-step
+captions, step order and which steps it has. A resource's *type* can't be
+changed — remove it and add a new one instead.
 
-Nothing is erased on the first click. Deleting a resource or a course, replacing
-a thumbnail, or replacing the file behind a resource moves the old version to
-the recycle bin at **/admin/trash** instead:
+Nothing is erased on the first click. Deleting a course, a resource or a library
+file moves it to the recycle bin at **/admin/trash** instead:
 
 - **Restore** puts it back — a course returns with its original URL slug,
   thumbnail and resources, re-filed in its category (recreated if that category
   has been deleted meanwhile). Restoring a resource requires its course to
   exist, so if you binned both, restore the course first.
-- **Delete forever** and **Empty bin** also erase the entry's uploaded files
-  from `data/uploads/`, which is what actually reclaims the storage. A file
-  still shared with a live resource, thumbnail or other bin entry is left alone.
+- **Delete forever** and **Empty bin** erase a binned library file from
+  `data/uploads/`, which is what actually reclaims the storage. Deleting a
+  course or a resource never removes a file: the file belongs to the library, so
+  purging it there is the only thing that frees disk space.
 - Anything older than 30 days is purged automatically the next time an admin
   page loads. Adjust `TRASH_RETENTION_DAYS` in `src/lib/data.ts` to change that.
 
@@ -158,7 +188,8 @@ the recycle bin at **/admin/trash** instead:
 - **Tailwind CSS** for a minimalist, fully responsive UI
 - **SQLite** (`better-sqlite3`) — zero-setup local database stored in
   `data/app.db`
-- Uploaded files stored in `data/uploads/` and served via `/files/…`
+- Uploaded files stored in `data/uploads/` and served via `/files/…`, with the
+  media library owning them and courses referencing them by id
 
 | Path | Purpose |
 | --- | --- |
@@ -167,8 +198,10 @@ the recycle bin at **/admin/trash** instead:
 | `src/components/ResourceViewer.tsx` | PDF viewer, image lightbox, storyboard stepper, Vimeo embed |
 | `src/app/admin/` | Admin section: login, course list, skill and resource editors, recycle bin |
 | `src/app/admin/categories/page.tsx` | Manage groups and categories |
-| `src/app/admin/actions.ts` | Server actions: auth, course/resource/taxonomy CRUD, uploads |
-| `src/app/files/[...path]/route.ts` | Serves uploaded files from `data/uploads` |
+| `src/app/admin/media/` | Media library: browse, upload, edit, replace, delete |
+| `src/app/admin/actions.ts` | Server actions: auth, course/resource/taxonomy CRUD |
+| `src/app/files/[...path]/route.ts` | Serves library files as `/files/<id>/<name>` |
+| `src/lib/media.ts` | The media library: uploads, folders, tags, usage, resolving |
 | `src/lib/db.ts` | SQLite schema, migrations + first-run seed data |
 | `src/lib/data.ts` | Typed query/CRUD helpers |
 | `src/lib/trash.ts` | Recycle bin: soft-delete, restore, purge |

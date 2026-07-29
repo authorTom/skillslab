@@ -1,4 +1,5 @@
 import { getDb } from "./db";
+import { mediaUrl } from "./media-refs";
 import { slugify } from "./slug";
 
 export type ResourceType = "pdf" | "image" | "storyboard" | "video";
@@ -39,6 +40,8 @@ export interface Skill {
   title: string;
   category_id: number | null;
   description: string;
+  thumbnail_media_id: number | null;
+  /** Resolved from `thumbnail_media_id`; "" when the course has no thumbnail. */
   thumbnail: string;
   created_at: string;
   /** Resolved from `category_id`; null when the course is uncategorised. */
@@ -71,11 +74,27 @@ export interface SkillFilter {
 }
 
 const SKILL_COLUMNS = `s.*, c.name AS category_name, c.slug AS category_slug,
-         g.name AS group_name, g.slug AS group_slug`;
+         g.name AS group_name, g.slug AS group_slug,
+         tm.filename AS thumbnail_filename`;
 
 const SKILL_SOURCE = `FROM skills s
        LEFT JOIN categories c ON c.id = s.category_id
-       LEFT JOIN skill_groups g ON g.id = c.group_id`;
+       LEFT JOIN skill_groups g ON g.id = c.group_id
+       LEFT JOIN media tm ON tm.id = s.thumbnail_media_id`;
+
+/** Turns the joined thumbnail row into the URL the templates render. */
+function withThumbnail<T extends { thumbnail_media_id: number | null }>(
+  row: T & { thumbnail_filename?: string | null }
+): T & { thumbnail: string } {
+  const { thumbnail_filename, ...skill } = row;
+  return {
+    ...(skill as T),
+    thumbnail:
+      row.thumbnail_media_id && thumbnail_filename
+        ? mediaUrl(row.thumbnail_media_id, thumbnail_filename)
+        : "",
+  };
+}
 
 export function listSkills(filter: SkillFilter = {}): SkillWithCount[] {
   const clauses: string[] = [];
@@ -93,7 +112,7 @@ export function listSkills(filter: SkillFilter = {}): SkillWithCount[] {
     params.push(filter.group);
   }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-  return getDb()
+  const rows = getDb()
     .prepare(
       `SELECT ${SKILL_COLUMNS}, COUNT(r.id) AS resource_count
        ${SKILL_SOURCE}
@@ -103,18 +122,21 @@ export function listSkills(filter: SkillFilter = {}): SkillWithCount[] {
        ORDER BY s.title COLLATE NOCASE`
     )
     .all(...params) as SkillWithCount[];
+  return rows.map(withThumbnail);
 }
 
 export function getSkillBySlug(slug: string): Skill | undefined {
-  return getDb()
+  const row = getDb()
     .prepare(`SELECT ${SKILL_COLUMNS} ${SKILL_SOURCE} WHERE s.slug = ?`)
     .get(slug) as Skill | undefined;
+  return row && withThumbnail(row);
 }
 
 export function getSkillById(id: number): Skill | undefined {
-  return getDb()
+  const row = getDb()
     .prepare(`SELECT ${SKILL_COLUMNS} ${SKILL_SOURCE} WHERE s.id = ?`)
     .get(id) as Skill | undefined;
+  return row && withThumbnail(row);
 }
 
 /* ------------------------------------------------------------------ */
@@ -444,8 +466,8 @@ export function updateSkill(
   return slug;
 }
 
-export function setSkillThumbnail(id: number, thumbnail: string) {
-  getDb().prepare("UPDATE skills SET thumbnail = ? WHERE id = ?").run(thumbnail, id);
+export function setSkillThumbnail(id: number, mediaId: number | null) {
+  getDb().prepare("UPDATE skills SET thumbnail_media_id = ? WHERE id = ?").run(mediaId, id);
 }
 
 export function deleteSkill(id: number) {
@@ -489,7 +511,7 @@ export function moveResource(id: number, direction: -1 | 1) {
 /** Days a deleted item stays recoverable before it is purged automatically. */
 export const TRASH_RETENTION_DAYS = 30;
 
-export type TrashKind = "skill" | "resource" | "thumbnail";
+export type TrashKind = "skill" | "resource" | "thumbnail" | "media";
 
 export interface TrashRow {
   id: number;
@@ -498,8 +520,6 @@ export interface TrashRow {
   detail: string;
   /** JSON restore snapshot — shape depends on `kind`. */
   payload: string;
-  /** JSON array of `/files/…` paths this item alone keeps alive. */
-  files: string;
   deleted_at: string;
 }
 
@@ -511,7 +531,7 @@ export interface SkillSnapshot {
   category: string;
   group: string;
   description: string;
-  thumbnail: string;
+  thumbnail_media_id: number | null;
   created_at: string;
   resources: { type: ResourceType; title: string; content: string; position: number }[];
 }
@@ -528,7 +548,7 @@ export interface ResourceSnapshot {
 export interface ThumbnailSnapshot {
   skill_id: number;
   skill_title: string;
-  thumbnail: string;
+  thumbnail_media_id: number;
 }
 
 export function listTrash(): TrashRow[] {
@@ -547,12 +567,11 @@ export function addTrashRow(
   kind: TrashKind,
   label: string,
   detail: string,
-  payload: unknown,
-  files: string[]
+  payload: unknown
 ): number {
   const result = getDb()
-    .prepare("INSERT INTO trash (kind, label, detail, payload, files) VALUES (?, ?, ?, ?, ?)")
-    .run(kind, label, detail, JSON.stringify(payload), JSON.stringify(files));
+    .prepare("INSERT INTO trash (kind, label, detail, payload) VALUES (?, ?, ?, ?)")
+    .run(kind, label, detail, JSON.stringify(payload));
   return Number(result.lastInsertRowid);
 }
 
@@ -567,34 +586,9 @@ export function expiredTrash(): TrashRow[] {
     .all(`-${TRASH_RETENTION_DAYS} days`) as TrashRow[];
 }
 
-export function trashFiles(row: TrashRow): string[] {
-  try {
-    const parsed: unknown = JSON.parse(row.files);
-    return Array.isArray(parsed) ? parsed.filter((f): f is string => typeof f === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-const likeEscape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
-
-/**
- * True while anything still points at this upload — a live skill thumbnail, a
- * live resource, or another bin entry. Checked before a purge deletes the file
- * from disk, so a snapshot that shares an image with a restored copy is safe.
- */
-export function isFileReferenced(publicPath: string, excludeTrashId?: number): boolean {
-  const db = getDb();
-  const quoted = `%"${likeEscape(publicPath)}"%`;
-  return Boolean(
-    db.prepare("SELECT 1 FROM skills WHERE thumbnail = ?").get(publicPath) ||
-      db
-        .prepare(`SELECT 1 FROM resources WHERE content = ? OR content LIKE ? ESCAPE '\\'`)
-        .get(publicPath, quoted) ||
-      db
-        .prepare(`SELECT 1 FROM trash WHERE id <> ? AND files LIKE ? ESCAPE '\\'`)
-        .get(excludeTrashId ?? -1, quoted)
-  );
+/** Guards a restore against a library file that has since been purged. */
+export function mediaExists(id: number | null): boolean {
+  return Boolean(id && getDb().prepare("SELECT 1 FROM media WHERE id = ?").get(id));
 }
 
 /**
@@ -608,11 +602,12 @@ export function restoreSkillSnapshot(snapshot: SkillSnapshot): { id: number; slu
   const reuseId = !getSkillById(snapshot.id);
   // The category may have been deleted while the skill sat in the bin.
   const categoryId = findOrCreateCategory(snapshot.category, snapshot.group);
+  const thumbnailId = mediaExists(snapshot.thumbnail_media_id) ? snapshot.thumbnail_media_id : null;
 
   const restore = db.transaction(() => {
     const result = db
       .prepare(
-        `INSERT INTO skills (${reuseId ? "id, " : ""}slug, title, category_id, description, thumbnail, created_at)
+        `INSERT INTO skills (${reuseId ? "id, " : ""}slug, title, category_id, description, thumbnail_media_id, created_at)
          VALUES (${reuseId ? "?, " : ""}?, ?, ?, ?, ?, ?)`
       )
       .run(
@@ -621,7 +616,7 @@ export function restoreSkillSnapshot(snapshot: SkillSnapshot): { id: number; slu
         snapshot.title,
         categoryId,
         snapshot.description,
-        snapshot.thumbnail,
+        thumbnailId,
         snapshot.created_at
       );
     const id = Number(result.lastInsertRowid);
