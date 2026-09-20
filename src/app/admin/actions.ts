@@ -243,7 +243,7 @@ export async function addResourceAction(
   await requireAdmin();
   const skillId = Number(text(formData, "skillId"));
   const type = text(formData, "type") as ResourceType;
-  if (!skillId || !["pdf", "image", "storyboard", "video"].includes(type)) {
+  if (!skillId || !["pdf", "image", "storyboard", "video", "local_video"].includes(type)) {
     return { error: "Invalid resource type." };
   }
 
@@ -311,15 +311,16 @@ function chosenContent(
     return { content: serialiseStoryboardFrames(frames) };
   }
 
-  const chosen = chosenMedia(formData, "mediaId", type === "pdf" ? "pdf" : "image");
+  const expectedKind = type === "pdf" ? "pdf" : type === "local_video" ? "video" : "image";
+  const chosen = chosenMedia(formData, "mediaId", expectedKind);
   if ("error" in chosen) return chosen;
   if (!chosen.mediaId) {
-    return {
-      error:
-        type === "pdf"
-          ? "Choose a PDF from the media library, or upload one."
-          : "Choose an image from the media library, or upload one.",
+    const messages: Record<string, string> = {
+      pdf: "Choose a PDF from the media library, or upload one.",
+      video: "Choose an MP4 video from the media library, or upload one.",
+      image: "Choose an image from the media library, or upload one.",
     };
+    return { error: messages[expectedKind] ?? "Choose a file from the media library." };
   }
   return { content: mediaRef(chosen.mediaId) };
 }
@@ -328,7 +329,7 @@ function chosenContent(
 function chosenMedia(
   formData: FormData,
   key: string,
-  kind: "image" | "pdf"
+  kind: "image" | "pdf" | "video"
 ): { mediaId: number | null } | { error: string } {
   const id = Number(text(formData, key));
   if (!Number.isInteger(id) || id <= 0) return { mediaId: null };
@@ -336,7 +337,12 @@ function chosenMedia(
   const media = getMedia(id);
   if (!media) return { error: "That file is no longer in the media library." };
   if (media.kind !== kind) {
-    return { error: kind === "pdf" ? "That file isn't a PDF." : "That file isn't an image." };
+    const messages: Record<string, string> = {
+      pdf: "That file isn't a PDF.",
+      video: "That file isn't a video.",
+      image: "That file isn't an image.",
+    };
+    return { error: messages[kind] ?? "Wrong file type." };
   }
   return { mediaId: id };
 }
@@ -404,5 +410,5 @@ export async function purgeExpiredTrashAction() {
 const VIMEO_URL = /vimeo\.com\/(?:video\/)?\d+/;
 
 function defaultTitle(type: ResourceType): string {
-  return { video: "Video", pdf: "Document", image: "Image", storyboard: "Storyboard" }[type];
+  return { video: "Video", local_video: "Video", pdf: "Document", image: "Image", storyboard: "Storyboard" }[type];
 }

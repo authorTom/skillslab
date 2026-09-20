@@ -50,6 +50,26 @@ export default function MediaThumb({
     );
   }
 
+  if (item.kind === "video") {
+    return (
+      <div className={`flex items-center justify-center bg-stone-900 ${className}`}>
+        <svg
+          className="h-10 w-10 text-stone-400"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <rect x="3" y="5" width="18" height="14" rx="3" />
+          <path d="m10.5 9.5 4.5 2.5-4.5 2.5z" fill="currentColor" stroke="none" />
+        </svg>
+      </div>
+    );
+  }
+
   return (
     /* eslint-disable-next-line @next/next/no-img-element */
     <img

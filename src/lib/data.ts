@@ -2,7 +2,7 @@ import { getDb } from "./db";
 import { mediaUrl } from "./media-refs";
 import { slugify } from "./slug";
 
-export type ResourceType = "pdf" | "image" | "storyboard" | "video";
+export type ResourceType = "pdf" | "image" | "storyboard" | "video" | "local_video";
 
 /** Top level of the taxonomy — a named set of categories. */
 export interface Group {

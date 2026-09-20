@@ -25,7 +25,7 @@ import {
   type MediaKind,
   type MediaSort,
 } from "@/lib/media";
-import { IMAGE_EXTENSIONS, MEDIA_EXTENSIONS } from "@/lib/media-types";
+import { IMAGE_EXTENSIONS, MEDIA_EXTENSIONS, VIDEO_EXTENSIONS } from "@/lib/media-types";
 import { trashMedia, trashReplacedMedia } from "@/lib/trash";
 
 export type ActionState = { error?: string; success?: string };
@@ -63,9 +63,11 @@ export async function uploadMediaAction(formData: FormData): Promise<UploadedMed
   }
 
   const imagesOnly = formData.get("imagesOnly") === "1";
+  const videosOnly = formData.get("videosOnly") === "1";
+  const allowed = imagesOnly ? IMAGE_EXTENSIONS : videosOnly ? VIDEO_EXTENSIONS : MEDIA_EXTENSIONS;
   const folderId = Number(text(formData, "folderId"));
   const result = await addUpload(file, {
-    allowed: imagesOnly ? IMAGE_EXTENSIONS : MEDIA_EXTENSIONS,
+    allowed,
     folderId: Number.isInteger(folderId) && folderId > 0 ? folderId : null,
   });
 

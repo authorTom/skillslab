@@ -69,6 +69,8 @@ function ResourcePanel({ resource }: { resource: ResolvedResource }) {
   switch (resource.type) {
     case "video":
       return <VideoPanel url={resource.src} />;
+    case "local_video":
+      return <LocalVideoPanel src={resource.src} title={resource.title} />;
     case "pdf":
       return <PdfPanel src={resource.src} title={resource.title} />;
     case "image":
@@ -114,6 +116,24 @@ function VideoPanel({ url }: { url: string }) {
           allowFullScreen
           title="Vimeo video"
         />
+      </div>
+    </Card>
+  );
+}
+
+function LocalVideoPanel({ src, title }: { src: string; title: string }) {
+  return (
+    <Card>
+      <div className="aspect-video bg-black">
+        <video
+          src={src}
+          controls
+          playsInline
+          className="h-full w-full"
+          title={title}
+        >
+          Your browser does not support the video element.
+        </video>
       </div>
     </Card>
   );
