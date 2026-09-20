@@ -1,36 +1,45 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { openCatalogue, closeCatalogue, isOpen } from "@/data/catalogue";
 import { initAssets } from "@/data/assets";
 import { useRouter } from "@/hooks/useRouter";
 import HomePage from "@/pages/HomePage";
 import SkillPage from "@/pages/SkillPage";
 import SettingsPage from "@/pages/SettingsPage";
+import UpdatePage from "@/pages/UpdatePage";
 
 type AppState = "loading" | "empty" | "ready";
 
 export default function App() {
   const [state, setState] = useState<AppState>("loading");
+  const [contentKey, setContentKey] = useState(0);
   const { page, params, navigate, back } = useRouter();
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function init() {
-      try {
-        await initAssets();
-        const opened = await openCatalogue();
-        if (!cancelled) setState(opened ? "ready" : "empty");
-      } catch {
-        if (!cancelled) setState("empty");
-      }
+  const loadContent = useCallback(async () => {
+    setState("loading");
+    try {
+      await initAssets();
+      const opened = await openCatalogue();
+      setState(opened ? "ready" : "empty");
+    } catch {
+      setState("empty");
     }
+  }, []);
 
-    init();
+  useEffect(() => {
+    loadContent();
     return () => {
-      cancelled = true;
       if (isOpen()) closeCatalogue();
     };
-  }, []);
+  }, [loadContent]);
+
+  const handleContentChanged = useCallback(() => {
+    setContentKey((k) => k + 1);
+    loadContent();
+  }, [loadContent]);
+
+  if (page === "update") {
+    return <UpdatePage back={back} onContentChanged={handleContentChanged} />;
+  }
 
   if (state === "loading") {
     return (
@@ -53,19 +62,24 @@ export default function App() {
           Welcome to SkillsLab
         </h1>
         <p className="mt-2 max-w-sm text-sm leading-relaxed text-stone-500">
-          No content package has been loaded yet. Import a content package via the admin
-          tools to get started.
+          No content package has been loaded yet. Import a content package to get started.
         </p>
+        <button
+          onClick={() => navigate("/update")}
+          className="mt-6 rounded-lg bg-teal-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-teal-700"
+        >
+          Import content
+        </button>
       </div>
     );
   }
 
   switch (page) {
     case "skill":
-      return <SkillPage slug={params.slug} back={back} />;
+      return <SkillPage key={contentKey} slug={params.slug} back={back} />;
     case "settings":
-      return <SettingsPage back={back} />;
+      return <SettingsPage back={back} navigate={navigate} />;
     default:
-      return <HomePage navigate={navigate} />;
+      return <HomePage key={contentKey} navigate={navigate} />;
   }
 }

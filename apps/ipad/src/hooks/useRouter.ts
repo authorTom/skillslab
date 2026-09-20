@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 
 export interface Route {
-  page: "home" | "skill" | "settings";
+  page: "home" | "skill" | "settings" | "update";
   params: Record<string, string>;
 }
 
@@ -9,6 +9,7 @@ function parseHash(hash: string): Route {
   const path = hash.replace(/^#\/?/, "") || "";
 
   if (path === "settings") return { page: "settings", params: {} };
+  if (path === "update") return { page: "update", params: {} };
 
   const skillMatch = path.match(/^skill\/(.+)$/);
   if (skillMatch) return { page: "skill", params: { slug: skillMatch[1] } };

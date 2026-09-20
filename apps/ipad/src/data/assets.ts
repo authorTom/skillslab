@@ -1,25 +1,39 @@
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 
-const ASSETS_DIR = "content/assets";
+export const CONTENT_DIR = "content";
+export const ASSETS_SUBDIR = `${CONTENT_DIR}/assets`;
 
-let assetsBaseUrl = "";
+let contentBaseUrl = "";
 
 export async function initAssets(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
   try {
+    await Filesystem.mkdir({ path: ASSETS_SUBDIR, directory: Directory.Documents, recursive: true });
     const result = await Filesystem.getUri({
-      path: ASSETS_DIR,
+      path: CONTENT_DIR,
       directory: Directory.Documents,
     });
-    assetsBaseUrl = Capacitor.convertFileSrc(result.uri);
+    contentBaseUrl = Capacitor.convertFileSrc(result.uri);
   } catch {
-    assetsBaseUrl = "";
+    contentBaseUrl = "";
   }
 }
 
-export function assetUrl(filename: string | null): string {
-  if (!filename) return "";
-  if (assetsBaseUrl) return `${assetsBaseUrl}/${filename}`;
+export function assetUrl(assetPath: string | null): string {
+  if (!assetPath) return "";
+  if (contentBaseUrl) return `${contentBaseUrl}/${assetPath}`;
   return "";
+}
+
+export async function assetFileExists(assetPath: string): Promise<boolean> {
+  try {
+    await Filesystem.stat({
+      path: `${CONTENT_DIR}/${assetPath}`,
+      directory: Directory.Documents,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
