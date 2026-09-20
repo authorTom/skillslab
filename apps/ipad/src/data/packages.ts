@@ -1,6 +1,7 @@
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { closeCatalogue, openCatalogue } from "./catalogue";
 import { initAssets, CONTENT_DIR, ASSETS_SUBDIR } from "./assets";
+import { verifySignature } from "./signature";
 import type { ReleaseManifest } from "./types";
 
 const STAGING_DIR = "staging";
@@ -102,6 +103,11 @@ export async function cleanStaging(): Promise<void> {
 }
 
 export async function activate(manifest: ReleaseManifest): Promise<void> {
+  const sigResult = await verifySignature(manifest);
+  if (!sigResult.valid) {
+    throw new Error(sigResult.reason);
+  }
+
   const state = await getPackageState();
 
   await closeCatalogue();
