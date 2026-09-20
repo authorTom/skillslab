@@ -3,6 +3,7 @@ import Header from "@/components/Header";
 import { useUpdater } from "@/hooks/useUpdater";
 import { getServerUrl, setServerUrl } from "@/data/settings";
 import { getPackageState } from "@/data/packages";
+import { getPublicKey, setPublicKey, isSignatureEnforced } from "@/data/signature";
 
 interface UpdatePageProps {
   back: () => void;
@@ -158,6 +159,9 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
           </Section>
         )}
 
+        {/* Signature verification */}
+        <SignatureSection />
+
         {/* Error display */}
         {state.error && state.status !== "done" && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -213,6 +217,63 @@ function ProgressBar({
         </p>
       )}
     </div>
+  );
+}
+
+function SignatureSection() {
+  const [key, setKey] = useState(getPublicKey);
+  const enforced = isSignatureEnforced();
+
+  function handleSave() {
+    setPublicKey(key.trim());
+  }
+
+  function handleClear() {
+    setKey("");
+    setPublicKey("");
+  }
+
+  return (
+    <Section title="Signature Verification">
+      <div className="flex items-center gap-2">
+        <span
+          className={`inline-block h-2.5 w-2.5 rounded-full ${
+            enforced ? "bg-green-500" : "bg-stone-300"
+          }`}
+        />
+        <span className="text-sm text-stone-600">
+          {enforced ? "Enforced" : "Not configured"}
+        </span>
+      </div>
+      <p className="mt-2 text-sm text-stone-500">
+        Paste a base64-encoded Ed25519 public key. When set, only signed content
+        packages will be accepted.
+      </p>
+      <div className="mt-3 flex gap-2">
+        <input
+          type="text"
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          placeholder="Base64 public key (32 bytes)"
+          className="flex-1 rounded-lg border border-stone-200 bg-white px-3 py-2 font-mono text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+        />
+        <button
+          onClick={handleSave}
+          disabled={!key.trim()}
+          className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-800 disabled:opacity-50"
+        >
+          Save
+        </button>
+        {enforced && (
+          <button
+            onClick={handleClear}
+            className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+    </Section>
   );
 }
 

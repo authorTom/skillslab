@@ -1,4 +1,12 @@
 node_modules/
 dist/
-ios/
 .capacitor/
+
+# iOS — track the project, ignore build artefacts and user state
+ios/App/build/
+ios/App/Pods/
+ios/DerivedData/
+ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/
+ios/App/App/public/
+ios/App/App/capacitor.config.json

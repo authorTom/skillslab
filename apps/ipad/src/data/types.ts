@@ -84,6 +84,7 @@ export interface ReleaseManifest {
     assets: number;
   };
   min_app_content_schema_version: number;
+  signature?: string;
 }
 
 export interface ReleaseInfo {
