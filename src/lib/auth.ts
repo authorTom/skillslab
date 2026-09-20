@@ -4,11 +4,23 @@ import { redirect } from "next/navigation";
 
 const COOKIE_NAME = "admin_session";
 
+const BLOCKED_PASSWORDS = new Set([
+  "clinical-admin",
+  "change-me",
+  "password",
+  "admin",
+]);
+
 function adminPassword(): string {
   const pw = process.env.ADMIN_PASSWORD;
   if (!pw) {
     throw new Error(
       "ADMIN_PASSWORD is not set. Set the ADMIN_PASSWORD environment variable before starting the server."
+    );
+  }
+  if (BLOCKED_PASSWORDS.has(pw)) {
+    throw new Error(
+      "ADMIN_PASSWORD is set to a blocked default. Choose a strong, unique password."
     );
   }
   return pw;

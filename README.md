@@ -97,7 +97,7 @@ For production: `npm run build && npm start`.
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `ADMIN_PASSWORD` | `clinical-admin` | Password for the admin section. **Change this before deploying.** |
+| `ADMIN_PASSWORD` | *(required)* | Password for the admin section. The server will not start without it, and rejects known-weak defaults. |
 
 Set it in `.env.local` for local development, or a `.env` beside `compose.yaml`
 for a container deployment.
