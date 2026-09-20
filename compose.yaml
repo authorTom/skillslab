@@ -4,8 +4,9 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # Override with: ADMIN_PASSWORD=... docker compose up, or an .env file.
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-clinical-admin}
+      # Required — the server will not start without a real password.
+      # Set it in .env beside this file, or pass ADMIN_PASSWORD=... on the command line.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env or on the command line}
     volumes:
       - clinical-data:/app/data
     restart: unless-stopped
