@@ -203,6 +203,11 @@ export function resourceMediaIds(type: ResourceType, content: string): number[] 
   return id ? [id] : [];
 }
 
+/** True for resource types that reference a local media file. */
+export function isLocalMediaResource(type: ResourceType): boolean {
+  return type !== "video";
+}
+
 export function resolveResources(resources: Resource[]): ResolvedResource[] {
   const media = getMediaMap(resources.flatMap((r) => resourceMediaIds(r.type, r.content)));
 
@@ -217,6 +222,17 @@ export function resolveResources(resources: Resource[]): ResolvedResource[] {
 
     if (resource.type === "video") {
       return { ...base, src: resource.content, alt: "", frames: [], broken: false };
+    }
+
+    if (resource.type === "local_video") {
+      const item = media.get(parseMediaRef(resource.content) ?? 0);
+      return {
+        ...base,
+        src: item?.url ?? "",
+        alt: item?.alt ?? "",
+        frames: [],
+        broken: !item || item.missing,
+      };
     }
 
     // A file deleted from the library, or lost from disk, is shown as
@@ -401,15 +417,19 @@ export async function replaceMediaFile(
   if (!current) return { ok: false, error: "That file is no longer in the library." };
 
   const ext = path.extname(file.name).toLowerCase();
-  const allowed = current.kind === "pdf" ? [".pdf"] : MEDIA_EXTENSIONS.filter((e) => e !== ".pdf");
+  const kindAllowed: Record<string, string[]> = {
+    pdf: [".pdf"],
+    video: [".mp4"],
+    image: MEDIA_EXTENSIONS.filter((e) => e !== ".pdf" && e !== ".mp4"),
+  };
+  const allowed = kindAllowed[current.kind] ?? MEDIA_EXTENSIONS;
   if (!allowed.includes(ext)) {
-    return {
-      ok: false,
-      error:
-        current.kind === "pdf"
-          ? "A PDF can only be replaced by another PDF."
-          : "An image can only be replaced by another image.",
+    const messages: Record<string, string> = {
+      pdf: "A PDF can only be replaced by another PDF.",
+      video: "A video can only be replaced by another MP4 video.",
+      image: "An image can only be replaced by another image.",
     };
+    return { ok: false, error: messages[current.kind] ?? "Unsupported file type." };
   }
 
   const storageName = await storeUpload(file, ext);

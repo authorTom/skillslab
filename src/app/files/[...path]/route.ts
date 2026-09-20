@@ -11,7 +11,7 @@ import { MIME_TYPES } from "@/lib/media-types";
  * file never breaks a link. A single segment is the pre-library form and still
  * resolves, by storage name, for anything already bookmarked.
  */
-export async function GET(_request: Request, { params }: { params: Promise<{ path: string[] }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   const { path: segments } = await params;
   const [first, ...rest] = segments.map(decodeURIComponent);
 
@@ -32,17 +32,79 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pat
   if (!resolved.startsWith(UPLOADS_DIR + path.sep)) return notFound();
 
   const contentType = media?.mime ?? MIME_TYPES[path.extname(resolved).toLowerCase()];
-  if (!contentType || !fs.existsSync(resolved)) return notFound();
+  if (!contentType) return notFound();
+
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(resolved);
+  } catch {
+    return notFound();
+  }
+
+  const filename = asciiName(media?.filename ?? storageName);
+  const rangeHeader = request.headers.get("range");
+
+  if (rangeHeader && contentType.startsWith("video/")) {
+    return rangeResponse(resolved, stat.size, rangeHeader, contentType, filename);
+  }
 
   const data = fs.readFileSync(resolved);
   return new Response(new Uint8Array(data), {
     headers: {
       "Content-Type": contentType,
       "Content-Length": String(data.length),
-      "Content-Disposition": `inline; filename="${asciiName(media?.filename ?? storageName)}"`,
+      "Content-Disposition": `inline; filename="${filename}"`,
       "Cache-Control": "public, max-age=3600",
+      "Accept-Ranges": "bytes",
     },
   });
+}
+
+function rangeResponse(
+  filePath: string,
+  fileSize: number,
+  rangeHeader: string,
+  contentType: string,
+  filename: string
+): Response {
+  const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+  if (!match) {
+    return new Response("Range Not Satisfiable", {
+      status: 416,
+      headers: { "Content-Range": `bytes */${fileSize}` },
+    });
+  }
+
+  const start = Number(match[1]);
+  const end = match[2] ? Math.min(Number(match[2]), fileSize - 1) : Math.min(start + 2 * 1024 * 1024, fileSize - 1);
+
+  if (start >= fileSize || end >= fileSize || start > end) {
+    return new Response("Range Not Satisfiable", {
+      status: 416,
+      headers: { "Content-Range": `bytes */${fileSize}` },
+    });
+  }
+
+  const length = end - start + 1;
+  const handle = fs.openSync(filePath, "r");
+  try {
+    const buffer = Buffer.alloc(length);
+    fs.readSync(handle, buffer, 0, length, start);
+
+    return new Response(new Uint8Array(buffer), {
+      status: 206,
+      headers: {
+        "Content-Type": contentType,
+        "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+        "Content-Length": String(length),
+        "Content-Disposition": `inline; filename="${filename}"`,
+        "Cache-Control": "public, max-age=3600",
+        "Accept-Ranges": "bytes",
+      },
+    });
+  } finally {
+    fs.closeSync(handle);
+  }
 }
 
 function notFound() {

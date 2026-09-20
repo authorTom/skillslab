@@ -5,7 +5,13 @@ import { redirect } from "next/navigation";
 const COOKIE_NAME = "admin_session";
 
 function adminPassword(): string {
-  return process.env.ADMIN_PASSWORD || "clinical-admin";
+  const pw = process.env.ADMIN_PASSWORD;
+  if (!pw) {
+    throw new Error(
+      "ADMIN_PASSWORD is not set. Set the ADMIN_PASSWORD environment variable before starting the server."
+    );
+  }
+  return pw;
 }
 
 function sessionToken(): string {

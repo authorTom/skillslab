@@ -10,7 +10,7 @@ export const DATA_DIR = path.join(process.cwd(), "data");
 export const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
 
 /** Bumped when a one-way schema migration has to run exactly once. */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 declare global {
   var __clinicalSkillsDb: Database.Database | undefined;
@@ -45,7 +45,7 @@ export function getDb(): Database.Database {
       filename TEXT NOT NULL,
       title TEXT NOT NULL DEFAULT '',
       alt TEXT NOT NULL DEFAULT '',
-      kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf')),
+      kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf', 'video')),
       mime TEXT NOT NULL,
       bytes INTEGER NOT NULL DEFAULT 0,
       width INTEGER,
@@ -100,7 +100,7 @@ export function getDb(): Database.Database {
     CREATE TABLE IF NOT EXISTS resources (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       skill_id INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
-      type TEXT NOT NULL CHECK (type IN ('pdf', 'image', 'storyboard', 'video')),
+      type TEXT NOT NULL CHECK (type IN ('pdf', 'image', 'storyboard', 'video', 'local_video')),
       title TEXT NOT NULL,
       content TEXT NOT NULL,
       position INTEGER NOT NULL DEFAULT 0
@@ -122,6 +122,7 @@ export function getDb(): Database.Database {
 
   migrate(db);
   migrateToMediaLibrary(db);
+  migrateMediaVideoKind(db);
   seedIfEmpty(db);
   globalThis.__clinicalSkillsDb = db;
   return db;
@@ -156,7 +157,7 @@ export function insertMediaFile(
 }
 
 export interface StoredFile {
-  kind: "image" | "pdf";
+  kind: "image" | "pdf" | "video";
   mime: string;
   bytes: number;
   width: number | null;
@@ -483,6 +484,69 @@ function uniqueSlugFor(
   let n = 2;
   while (taken.get(slug)) slug = `${base}-${n++}`;
   return slug;
+}
+
+/* ------------------------------------------------------------------ */
+/* Migration: widen media.kind CHECK to accept 'video'                */
+/* ------------------------------------------------------------------ */
+
+function migrateMediaVideoKind(db: Database.Database) {
+  const version = Number(db.pragma("user_version", { simple: true }));
+  if (version >= SCHEMA_VERSION) return;
+  if (version < 1) return; // Fresh DB or pre-library — handled by CREATE TABLE above.
+
+  const tableSql = (
+    db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'media'").get() as
+      | { sql: string }
+      | undefined
+  )?.sql;
+  if (!tableSql || tableSql.includes("'video'")) {
+    db.pragma(`user_version = ${SCHEMA_VERSION}`);
+    return;
+  }
+
+  db.exec(`
+    CREATE TABLE media_v2 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      folder_id INTEGER REFERENCES media_folders(id) ON DELETE SET NULL,
+      storage_name TEXT NOT NULL UNIQUE,
+      filename TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      alt TEXT NOT NULL DEFAULT '',
+      kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf', 'video')),
+      mime TEXT NOT NULL,
+      bytes INTEGER NOT NULL DEFAULT 0,
+      width INTEGER,
+      height INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    INSERT INTO media_v2 SELECT * FROM media;
+    DROP TABLE media;
+    ALTER TABLE media_v2 RENAME TO media;
+  `);
+
+  const resourcesSql = (
+    db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'resources'").get() as
+      | { sql: string }
+      | undefined
+  )?.sql;
+  if (resourcesSql && !resourcesSql.includes("'local_video'")) {
+    db.exec(`
+      CREATE TABLE resources_v2 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        skill_id INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+        type TEXT NOT NULL CHECK (type IN ('pdf', 'image', 'storyboard', 'video', 'local_video')),
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO resources_v2 SELECT * FROM resources;
+      DROP TABLE resources;
+      ALTER TABLE resources_v2 RENAME TO resources;
+    `);
+  }
+
+  db.pragma(`user_version = ${SCHEMA_VERSION}`);
 }
 
 /* ------------------------------------------------------------------ */

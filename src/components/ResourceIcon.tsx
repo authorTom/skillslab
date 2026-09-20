@@ -9,6 +9,12 @@ const PATHS: Record<ResourceType, React.ReactNode> = {
       <path d="m10.5 9.5 4.5 2.5-4.5 2.5z" fill="currentColor" stroke="none" />
     </>
   ),
+  local_video: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="3" />
+      <path d="m10.5 9.5 4.5 2.5-4.5 2.5z" fill="currentColor" stroke="none" />
+    </>
+  ),
   pdf: (
     <>
       <path d="M6 3h8l4 4v14H6z" />

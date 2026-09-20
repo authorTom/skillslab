@@ -28,7 +28,7 @@ export default async function EditResourcePage({
 
   // The form edits library references, so it needs the files themselves.
   const file =
-    resource.type === "pdf" || resource.type === "image"
+    resource.type === "pdf" || resource.type === "image" || resource.type === "local_video"
       ? getMedia(parseMediaRef(resource.content) ?? 0)
       : undefined;
   const frames = resource.type === "storyboard" ? parseStoryboardFrames(resource.content) : [];

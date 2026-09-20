@@ -9,7 +9,8 @@ import StoryboardField from "./StoryboardField";
 import { inputClass, primaryButtonClass } from "./formStyles";
 
 const TYPES: { value: ResourceType; label: string; hint: string }[] = [
-  { value: "video", label: "Vimeo video", hint: "Paste a Vimeo link, e.g. https://vimeo.com/76979871" },
+  { value: "local_video", label: "Video (local file)", hint: "Pick an MP4 video from the media library, or upload one" },
+  { value: "video", label: "Video (Vimeo)", hint: "Paste a Vimeo link, e.g. https://vimeo.com/76979871" },
   { value: "pdf", label: "PDF document", hint: "Pick a PDF from the media library, or upload one" },
   { value: "image", label: "Image", hint: "Pick an image from the media library, or upload one" },
   { value: "storyboard", label: "Storyboard", hint: "Add images in step order, then caption each step" },
@@ -107,7 +108,7 @@ export default function AddResourceForm({
         <MediaField
           key={`${type}-${fieldKey}`}
           name="mediaId"
-          kind={type === "pdf" ? "pdf" : "image"}
+          kind={type === "local_video" ? "video" : type === "pdf" ? "pdf" : "image"}
           label="File"
           hint={selected.hint}
         />

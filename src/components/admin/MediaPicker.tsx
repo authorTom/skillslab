@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { searchMediaAction, uploadMediaAction } from "@/app/admin/media/actions";
 import type { MediaItem } from "@/lib/media";
-import { ACCEPT_IMAGES, type MediaKind } from "@/lib/media-types";
+import { ACCEPT_IMAGES, ACCEPT_VIDEO, type MediaKind } from "@/lib/media-types";
 import { formatBytes } from "@/lib/files";
 import MediaThumb from "./MediaThumb";
 import { inputClass } from "./formStyles";
@@ -109,6 +109,7 @@ function PickerDialog({
       const data = new FormData();
       data.set("file", file);
       if (kind === "image") data.set("imagesOnly", "1");
+      if (kind === "video") data.set("videosOnly", "1");
       const result = await uploadMediaAction(data);
       if (result.ok) added.push(result.media);
       else setError(result.error);
@@ -137,7 +138,7 @@ function PickerDialog({
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={`Search ${kind === "pdf" ? "PDFs" : "images"}…`}
+            placeholder={`Search ${kind === "pdf" ? "PDFs" : kind === "video" ? "videos" : "images"}…`}
             aria-label="Search the media library"
             className={`${inputClass} ml-auto w-auto min-w-56 flex-1 py-2`}
           />
@@ -157,7 +158,7 @@ function PickerDialog({
               ref={uploadRef}
               type="file"
               multiple={multiple}
-              accept={kind === "pdf" ? "application/pdf" : ACCEPT_IMAGES}
+              accept={kind === "pdf" ? "application/pdf" : kind === "video" ? ACCEPT_VIDEO : ACCEPT_IMAGES}
               onChange={(e) => upload(e.target.files)}
               className="ml-3 text-sm font-normal text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-stone-700 file:shadow-sm hover:file:bg-stone-100"
             />
@@ -174,7 +175,7 @@ function PickerDialog({
             <p className="py-10 text-center text-sm text-stone-400">
               {query
                 ? "Nothing matches that search."
-                : `No ${kind === "pdf" ? "PDFs" : "images"} in the library yet — upload one above.`}
+                : `No ${kind === "pdf" ? "PDFs" : kind === "video" ? "videos" : "images"} in the library yet — upload one above.`}
             </p>
           ) : (
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">

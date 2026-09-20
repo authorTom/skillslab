@@ -77,11 +77,11 @@ export default function EditResourceForm({
         </div>
       )}
 
-      {(resource.type === "pdf" || resource.type === "image") && (
+      {(resource.type === "pdf" || resource.type === "image" || resource.type === "local_video") && (
         <MediaField
           key={file?.id ?? "none"}
           name="mediaId"
-          kind={resource.type === "pdf" ? "pdf" : "image"}
+          kind={resource.type === "pdf" ? "pdf" : resource.type === "local_video" ? "video" : "image"}
           initial={file}
           label="File"
           hint="Changing this points the resource at a different library file. The old one stays in the library for anything else that uses it."
