@@ -10,6 +10,22 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "50mb",
     },
   },
+  async headers() {
+    return [
+      {
+        // The iPad app's webview runs at capacitor://localhost, so its
+        // release checks and downloads are cross-origin. These routes only
+        // serve published release content and take no credentials.
+        source: "/api/offline/:path*",
+        headers: [
+          { key: "Access-Control-Allow-Origin", value: "*" },
+          { key: "Access-Control-Allow-Methods", value: "GET, HEAD, OPTIONS" },
+          { key: "Access-Control-Allow-Headers", value: "If-None-Match" },
+          { key: "Access-Control-Expose-Headers", value: "ETag" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
