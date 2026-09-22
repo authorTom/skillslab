@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { searchMediaAction, uploadMediaAction } from "@/app/admin/media/actions";
 import type { MediaItem } from "@/lib/media";
-import { ACCEPT_IMAGES, ACCEPT_VIDEO, type MediaKind } from "@/lib/media-types";
+import { ACCEPT_IMAGES, ACCEPT_VIDEO, MAX_UPLOAD_MB, type MediaKind } from "@/lib/media-types";
 import { formatBytes } from "@/lib/files";
 import MediaThumb from "./MediaThumb";
 import { inputClass } from "./formStyles";
@@ -110,9 +110,18 @@ function PickerDialog({
       data.set("file", file);
       if (kind === "image") data.set("imagesOnly", "1");
       if (kind === "video") data.set("videosOnly", "1");
-      const result = await uploadMediaAction(data);
-      if (result.ok) added.push(result.media);
-      else setError(result.error);
+      if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+        setError(`${file.name} is over the ${MAX_UPLOAD_MB} MB upload limit.`);
+        continue;
+      }
+      try {
+        const result = await uploadMediaAction(data);
+        if (result.ok) added.push(result.media);
+        else setError(result.error);
+      } catch {
+        // The action rejects rather than returning when the request fails.
+        setError(`${file.name} did not reach the server. Check the connection and file size, then try again.`);
+      }
     }
     setUploading(false);
     if (uploadRef.current) uploadRef.current.value = "";

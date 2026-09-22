@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import type { ActionState } from "@/app/admin/media/actions";
 import type { MediaKind } from "@/lib/media-types";
-import { ACCEPT_IMAGES } from "@/lib/media-types";
+import { ACCEPT_IMAGES, ACCEPT_VIDEO } from "@/lib/media-types";
 import { fileInputClass } from "./formStyles";
 
 function SubmitButton() {
@@ -51,7 +51,7 @@ export default function MediaReplaceForm({
         name="file"
         type="file"
         required
-        accept={kind === "pdf" ? "application/pdf" : ACCEPT_IMAGES}
+        accept={kind === "pdf" ? "application/pdf" : kind === "video" ? ACCEPT_VIDEO : ACCEPT_IMAGES}
         className={fileInputClass}
       />
       <SubmitButton />

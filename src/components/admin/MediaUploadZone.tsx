@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { uploadMediaAction } from "@/app/admin/media/actions";
-import { ACCEPT_MEDIA } from "@/lib/media-types";
+import { ACCEPT_ALL_MEDIA, MAX_UPLOAD_MB } from "@/lib/media-types";
 
 type Upload = { name: string; status: "uploading" | "done" | "failed"; error?: string };
 
@@ -23,10 +23,7 @@ export default function MediaUploadZone({ folderId }: { folderId?: number | null
 
     setUploads(list.map((file) => ({ name: file.name, status: "uploading" })));
     for (const [i, file] of list.entries()) {
-      const data = new FormData();
-      data.set("file", file);
-      if (folderId) data.set("folderId", String(folderId));
-      const result = await uploadMediaAction(data);
+      const result = await uploadOne(file, folderId);
       setUploads((current) =>
         current.map((entry, index) =>
           index === i
@@ -69,12 +66,14 @@ export default function MediaUploadZone({ folderId }: { folderId?: number | null
           </button>
           .
         </p>
-        <p className="mt-1 text-xs text-stone-400">PNG, JPG, GIF, WebP, AVIF, SVG or PDF.</p>
+        <p className="mt-1 text-xs text-stone-400">
+          PNG, JPG, GIF, WebP, AVIF, SVG, PDF or MP4 video, up to {MAX_UPLOAD_MB} MB each.
+        </p>
         <input
           ref={inputRef}
           type="file"
           multiple
-          accept={ACCEPT_MEDIA}
+          accept={ACCEPT_ALL_MEDIA}
           onChange={(e) => upload(e.target.files)}
           className="hidden"
         />
@@ -105,4 +104,31 @@ export default function MediaUploadZone({ folderId }: { folderId?: number | null
       )}
     </div>
   );
+}
+
+/**
+ * Uploads one file, turning a failed request into an error row. When the
+ * server action itself rejects (the body is over the size limit, or the
+ * connection drops), the promise throws instead of returning a result.
+ */
+async function uploadOne(
+  file: File,
+  folderId: number | null | undefined
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+    const mb = Math.ceil(file.size / (1024 * 1024));
+    return { ok: false, error: `This file is ${mb} MB; the limit is ${MAX_UPLOAD_MB} MB.` };
+  }
+
+  const data = new FormData();
+  data.set("file", file);
+  if (folderId) data.set("folderId", String(folderId));
+  try {
+    return await uploadMediaAction(data);
+  } catch {
+    return {
+      ok: false,
+      error: "The upload did not reach the server. Check the connection and file size, then try again.",
+    };
+  }
 }

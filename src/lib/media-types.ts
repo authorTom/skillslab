@@ -26,6 +26,12 @@ export function mediaKindFor(ext: string): MediaKind | null {
   return IMAGE_EXTENSIONS.includes(ext) ? "image" : null;
 }
 
+/**
+ * Largest single upload, in megabytes. next.config.ts derives the server
+ * action body limit from this, and the upload zone checks it before sending.
+ */
+export const MAX_UPLOAD_MB = 500;
+
 /** `accept` attribute for a file input, per kind of upload. */
 export const ACCEPT_IMAGES = "image/*,.svg";
 export const ACCEPT_MEDIA = "image/*,.svg,application/pdf";
