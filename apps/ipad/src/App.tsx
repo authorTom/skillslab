@@ -54,7 +54,7 @@ export default function App() {
         <BrandMark className="h-16 w-16 drop-shadow-sm" />
         <div className="flex items-center gap-2.5 text-ink-2">
           <Spinner className="h-4 w-4" />
-          <span className="text-[0.9375rem]">Loading content…</span>
+          <span className="font-mono text-[0.75rem] uppercase tracking-[0.12em]">Loading content</span>
         </div>
       </div>
     );
@@ -62,14 +62,17 @@ export default function App() {
 
   if (state === "empty") {
     return (
-      <main className="safe-top safe-bottom flex min-h-screen flex-col items-center justify-center bg-canvas px-6 text-center">
+      <main className="safe-top safe-bottom flex min-h-screen animate-rise flex-col items-center justify-center bg-canvas px-8 text-center">
         <BrandMark className="h-20 w-20 drop-shadow-md" />
-        <h1 className="mt-8 text-[2rem] font-bold leading-tight tracking-[-0.025em]">Welcome to SkillsLab</h1>
-        <p className="mt-3 max-w-md text-[1.0625rem] leading-relaxed text-ink-2 text-pretty">
-          Clinical skills videos, storyboards and guides, available offline. Install a content package to get
-          started.
+        <p className="mt-10 font-mono text-[0.75rem] uppercase tracking-[0.14em] text-accent-ink">Clinical skills, offline</p>
+        <h1 className="mt-3 font-display text-[3rem] leading-[1.02] tracking-[-0.025em] sm:text-[3.75rem]">
+          Welcome to <em className="italic">SkillsLab</em>
+        </h1>
+        <p className="mt-5 max-w-md text-[1.0625rem] leading-relaxed text-ink-2 text-pretty">
+          Videos, step-by-step storyboards and guides for every clinical skill, ready without a connection.
+          Install a content package to get started.
         </p>
-        <Button size="lg" className="mt-8" icon={<DownloadIcon className="h-5 w-5" />} onClick={() => navigate("/update")}>
+        <Button size="lg" className="mt-10" icon={<DownloadIcon className="h-5 w-5" />} onClick={() => navigate("/update")}>
           Get content
         </Button>
         <p className="mt-4 max-w-xs text-[0.8125rem] leading-relaxed text-ink-3">

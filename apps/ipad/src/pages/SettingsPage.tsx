@@ -4,6 +4,7 @@ import { getPackageState } from "@/data/packages";
 import Header from "@/components/Header";
 import PageTitle from "@/components/PageTitle";
 import BrandMark from "@/components/BrandMark";
+import SplitLayout from "@/components/SplitLayout";
 import { GroupedSection, InfoList, InfoRow, NavRow } from "@/components/Grouped";
 import { RefreshIcon } from "@/components/icons";
 
@@ -47,23 +48,25 @@ export default function SettingsPage({ back, navigate }: SettingsPageProps) {
 
   return (
     <div className="min-h-screen bg-canvas">
-      <Header title="Settings" onBack={back} backLabel="Skills" />
+      <Header title="Settings" onBack={back} backLabel="Skills" titleInPortraitOnly />
 
-      <main className="safe-bottom mx-auto max-w-2xl space-y-9 px-5 pb-20 pt-2 sm:px-8">
-        <PageTitle title="Settings" />
-
-        <div className="flex items-center gap-4 rounded-2xl bg-surface p-5 shadow-card ring-1 ring-line">
-          <BrandMark className="h-16 w-16 shrink-0 drop-shadow-sm" />
-          <div className="min-w-0">
-            <p className="text-lg font-semibold tracking-tight">SkillsLab Reader</p>
-            <p className="mt-0.5 text-[0.9375rem] text-ink-2">
-              {info
-                ? `Content ${info.releaseVersion}${published ? ` · Published ${published}` : ""}`
-                : "No content installed"}
-            </p>
-          </div>
-        </div>
-
+      <SplitLayout
+        intro={
+          <>
+            <PageTitle eyebrow="SkillsLab Reader" title="Settings">
+              <p>Details of the content installed on this iPad, and where to update it.</p>
+            </PageTitle>
+            <div className="mt-8 flex items-center gap-4 rounded-[1.25rem] bg-surface p-4 shadow-card ring-1 ring-line">
+              <BrandMark className="h-14 w-14 shrink-0 drop-shadow-sm" />
+              <div className="min-w-0">
+                <p className="font-mono text-[0.6875rem] uppercase tracking-[0.12em] text-ink-3">Installed content</p>
+                <p className="mt-0.5 font-mono text-[1.0625rem] text-ink">{info ? `v${info.releaseVersion}` : "None"}</p>
+                {published && <p className="text-[0.8125rem] text-ink-2">Published {published}</p>}
+              </div>
+            </div>
+          </>
+        }
+      >
         <GroupedSection
           title="Content package"
           footer={info?.hasPrevious ? "The previously installed version is kept, so you can roll back if needed." : undefined}
@@ -96,7 +99,7 @@ export default function SettingsPage({ back, navigate }: SettingsPageProps) {
             <InfoRow label="Platform" value="iPad (iOS)" />
           </InfoList>
         </GroupedSection>
-      </main>
+      </SplitLayout>
     </div>
   );
 }

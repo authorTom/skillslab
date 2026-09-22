@@ -7,7 +7,7 @@ import ResourceViewer from "@/components/ResourceViewer";
 import EmptyState from "@/components/EmptyState";
 import Button from "@/components/Button";
 import Spinner from "@/components/Spinner";
-import { SearchIcon, StoryboardIcon } from "@/components/icons";
+import { ChevronLeftIcon, SearchIcon } from "@/components/icons";
 
 interface SkillPageProps {
   slug: string;
@@ -76,23 +76,27 @@ export default function SkillPage({ slug, back }: SkillPageProps) {
 
   return (
     <div className="min-h-screen bg-canvas">
-      <Header title={skill.title} onBack={back} backLabel="Skills" />
+      {/* Landscape has its own back button in the sticky title column. */}
+      <Header title={skill.title} onBack={back} backLabel="Skills" className="lg:hidden" />
 
-      <main className="safe-bottom mx-auto max-w-6xl px-5 pb-20 sm:px-8">
-        <PageTitle className="pt-2" eyebrow={categoryName} title={skill.title}>
-          {skill.description && <p>{skill.description}</p>}
-        </PageTitle>
-
-        <div className="mt-8 border-t border-line pt-8">
-          {resources.length === 0 ? (
-            <EmptyState outlined icon={<StoryboardIcon className="h-7 w-7" />} title="No resources yet">
-              Materials for this skill haven’t been added. Check back after a content update.
-            </EmptyState>
-          ) : (
-            <ResourceViewer resources={resources} />
-          )}
-        </div>
-      </main>
+      <ResourceViewer
+        resources={resources}
+        intro={
+          <div className="animate-rise">
+            <button
+              type="button"
+              onClick={back}
+              className="-ml-2 mb-8 hidden min-h-11 items-center gap-0.5 rounded-lg pr-3 text-[1.0625rem] text-accent-ink transition-opacity active:opacity-50 lg:inline-flex"
+            >
+              <ChevronLeftIcon className="h-6 w-6" />
+              Skills
+            </button>
+            <PageTitle eyebrow={categoryName} title={skill.title}>
+              {skill.description && <p>{skill.description}</p>}
+            </PageTitle>
+          </div>
+        }
+      />
     </div>
   );
 }

@@ -14,10 +14,10 @@ export function GroupedSection({
   const headingId = useId();
   return (
     <section aria-labelledby={headingId}>
-      <h2 id={headingId} className="mb-2 px-4 text-[0.8125rem] font-semibold uppercase tracking-[0.06em] text-ink-3">
+      <h2 id={headingId} className="mb-2.5 px-4 font-mono text-[0.75rem] font-medium uppercase tracking-[0.12em] text-ink-3">
         {title}
       </h2>
-      <div className="overflow-hidden rounded-2xl bg-surface shadow-card ring-1 ring-line">{children}</div>
+      <div className="overflow-hidden rounded-[1.25rem] bg-surface shadow-card ring-1 ring-line">{children}</div>
       {footer && <div className="mt-2 px-4 text-[0.8125rem] leading-relaxed text-ink-3">{footer}</div>}
     </section>
   );
@@ -33,7 +33,7 @@ export function InfoRow({ label, value, mono }: { label: string; value: string; 
       <dt className="shrink-0 text-[0.9375rem] text-ink-2">{label}</dt>
       <dd
         className={`min-w-0 select-text break-all text-right text-[0.9375rem] font-medium text-ink ${
-          mono ? "font-mono text-[0.8125rem]" : ""
+          mono ? "font-mono text-[0.8125rem] font-normal" : ""
         }`}
       >
         {value}
