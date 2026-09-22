@@ -14,13 +14,13 @@ const VARIANTS: Record<ButtonVariant, string> = {
 
 // Both sizes clear Apple's 44pt minimum touch target.
 const SIZES: Record<ButtonSize, string> = {
-  md: "min-h-11 px-4 text-[0.9375rem] gap-2 rounded-xl",
-  lg: "min-h-12 px-6 text-base gap-2.5 rounded-xl",
+  md: "min-h-11 px-5 text-[0.9375rem] gap-2 rounded-full",
+  lg: "min-h-13 px-7 text-base gap-2.5 rounded-full",
 };
 
 /** Class list for a button-styled element, for links that look like buttons. */
 export function buttonClass(variant: ButtonVariant = "primary", size: ButtonSize = "md"): string {
-  return `inline-flex shrink-0 items-center justify-center font-semibold tracking-[-0.01em] transition duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45 ${VARIANTS[variant]} ${SIZES[size]}`;
+  return `inline-flex shrink-0 items-center justify-center font-medium tracking-[-0.005em] transition duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45 ${VARIANTS[variant]} ${SIZES[size]}`;
 }
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {

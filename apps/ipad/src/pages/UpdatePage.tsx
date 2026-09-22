@@ -1,6 +1,7 @@
 import { useState, useEffect, useId } from "react";
 import Header from "@/components/Header";
 import PageTitle from "@/components/PageTitle";
+import SplitLayout from "@/components/SplitLayout";
 import Button from "@/components/Button";
 import { GroupedBody, GroupedSection, Notice } from "@/components/Grouped";
 import {
@@ -98,12 +99,15 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
 
   return (
     <div className="min-h-screen bg-canvas">
-      <Header title="Content updates" onBack={back} backLabel="Back" />
+      <Header title="Content updates" onBack={back} backLabel="Back" titleInPortraitOnly />
 
-      <main className="safe-bottom mx-auto max-w-2xl space-y-9 px-5 pb-20 pt-2 sm:px-8">
-        <PageTitle title="Content updates">
-          <p>Keep this iPad’s skills library current from your CMS server, or from a package copied onto the device.</p>
-        </PageTitle>
+      <SplitLayout
+        intro={
+          <PageTitle eyebrow="Settings" title="Content updates">
+            <p>Keep this iPad’s skills library current from your CMS server, or from a package copied onto the device.</p>
+          </PageTitle>
+        }
+      >
 
         <GroupedSection title="Online update">
           <GroupedBody>
@@ -278,7 +282,7 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
             </GroupedBody>
           </GroupedSection>
         )}
-      </main>
+      </SplitLayout>
     </div>
   );
 }

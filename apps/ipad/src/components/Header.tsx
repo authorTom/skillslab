@@ -10,6 +10,10 @@ interface HeaderProps {
   onSettings?: () => void;
   /** Show the SkillsLab lockup on the leading edge (home screen). */
   brand?: boolean;
+  /** Hide the scrolled title in landscape, where the page keeps its own
+   *  title pinned in a side column. */
+  titleInPortraitOnly?: boolean;
+  className?: string;
   children?: React.ReactNode;
 }
 
@@ -18,19 +22,28 @@ interface HeaderProps {
  * scrolls beneath it, then turns translucent with a hairline and shows the
  * page title, the way UIKit's large-title navigation bars behave.
  */
-export default function Header({ title, onBack, backLabel = "Back", onSettings, brand, children }: HeaderProps) {
+export default function Header({
+  title,
+  onBack,
+  backLabel = "Back",
+  onSettings,
+  brand,
+  titleInPortraitOnly,
+  className = "",
+  children,
+}: HeaderProps) {
   const raised = useScrolled(4);
   const showTitle = useScrolled(56);
 
   return (
     <header
-      className={`safe-top sticky top-0 z-30 border-b transition-[background-color,border-color] duration-200 ${
+      className={`safe-top sticky top-0 z-30 border-b transition-[background-color,border-color] duration-200 ${className} ${
         raised
           ? "border-line bg-canvas/80 backdrop-blur-xl backdrop-saturate-150"
           : "border-transparent bg-canvas"
       }`}
     >
-      <div className="relative mx-auto flex h-14 max-w-6xl items-center px-3 sm:px-5">
+      <div className="relative flex h-14 items-center px-3 sm:px-6">
         <div className="flex min-w-0 flex-1 items-center">
           {onBack ? (
             <button
@@ -44,7 +57,7 @@ export default function Header({ title, onBack, backLabel = "Back", onSettings, 
           ) : brand ? (
             <div className="flex items-center gap-2.5 pl-1.5">
               <BrandMark className="h-8 w-8 drop-shadow-sm" />
-              <span className="text-[1.0625rem] font-semibold tracking-[-0.01em]">SkillsLab</span>
+              <span className="text-[1.0625rem] font-semibold tracking-[-0.02em]">SkillsLab</span>
             </div>
           ) : null}
         </div>
@@ -53,7 +66,7 @@ export default function Header({ title, onBack, backLabel = "Back", onSettings, 
           // Decorative: every page repeats its title as a visible h1.
           <p
             aria-hidden="true"
-            className={`pointer-events-none absolute inset-x-36 truncate text-center text-[1.0625rem] font-semibold tracking-[-0.01em] transition-[opacity,transform] duration-200 ${
+            className={`pointer-events-none absolute inset-x-36 truncate ${titleInPortraitOnly ? "lg:hidden" : ""} text-center text-[1.0625rem] font-semibold tracking-[-0.01em] transition-[opacity,transform] duration-200 ${
               showTitle ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
             }`}
           >
