@@ -7,9 +7,11 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "test": "vitest run",
     "lint": "eslint src/",
     "cap:sync": "cap sync ios",
-    "cap:open": "cap open ios"
+    "cap:open": "cap open ios",
+    "sim": "./scripts/run-sim.sh"
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^8.1.1",
