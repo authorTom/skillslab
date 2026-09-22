@@ -7,7 +7,9 @@ import {
   signingPayload,
   verifySignature,
 } from "../src/data/signature";
+import type { SignedManifest } from "../src/data/signature";
 import type { ReleaseManifest } from "../src/data/types";
+import nodeCrypto from "node:crypto";
 
 function makeManifest(overrides?: Partial<ReleaseManifest>): ReleaseManifest {
   return {
@@ -137,6 +139,84 @@ describe("signature", () => {
       if (!result.valid) {
         expect(result.reason).toMatch(/64 bytes|error/i);
       }
+    });
+  });
+
+  // The checks above all exercise rejection paths. These cover the path that
+  // actually matters in the field: a package signed by the CMS with a real
+  // Ed25519 key, verified through WebCrypto exactly as it is on the iPad.
+  // Signing here mirrors scripts/sign-release.mjs.
+  describe("verifySignature round trip", () => {
+    function keypair() {
+      const { publicKey, privateKey } = nodeCrypto.generateKeyPairSync("ed25519");
+      const raw = publicKey.export({ type: "spki", format: "der" }).subarray(-32);
+      return { privateKey, publicKeyB64: Buffer.from(raw).toString("base64") };
+    }
+
+    function sign(manifest: ReleaseManifest, privateKey: nodeCrypto.KeyObject): string {
+      const payload = Buffer.from(signingPayload(manifest), "utf8");
+      return nodeCrypto.sign(null, payload, privateKey).toString("base64");
+    }
+
+    it("accepts a correctly signed manifest", async () => {
+      const { privateKey, publicKeyB64 } = keypair();
+      const manifest = makeManifest();
+      const signed: SignedManifest = { ...manifest, signature: sign(manifest, privateKey) };
+
+      setPublicKey(publicKeyB64);
+      expect(isSignatureEnforced()).toBe(true);
+
+      const result = await verifySignature(signed);
+      expect(result).toEqual({ valid: true });
+    });
+
+    it("rejects a manifest tampered with after signing", async () => {
+      const { privateKey, publicKeyB64 } = keypair();
+      const manifest = makeManifest();
+      const signature = sign(manifest, privateKey);
+
+      // Swap in a different asset hash, as a modified package would have.
+      const tampered: SignedManifest = {
+        ...manifest,
+        assets: [{ ...manifest.assets[0], sha256: "tampered" }],
+        signature,
+      };
+
+      setPublicKey(publicKeyB64);
+      const result = await verifySignature(tampered);
+      expect(result.valid).toBe(false);
+      if (!result.valid) {
+        expect(result.reason).toContain("verification failed");
+      }
+    });
+
+    it("rejects a manifest signed by a different key", async () => {
+      const signer = keypair();
+      const other = keypair();
+      const manifest = makeManifest();
+      const signed: SignedManifest = { ...manifest, signature: sign(manifest, signer.privateKey) };
+
+      setPublicKey(other.publicKeyB64);
+      const result = await verifySignature(signed);
+      expect(result.valid).toBe(false);
+    });
+
+    it("accepts again once the key is cleared", async () => {
+      const { privateKey, publicKeyB64 } = keypair();
+      const manifest = makeManifest();
+      const signed: SignedManifest = { ...manifest, signature: sign(manifest, privateKey) };
+
+      setPublicKey(publicKeyB64);
+      expect(isSignatureEnforced()).toBe(true);
+
+      // "Clear" in Settings > Signature Verification stops enforcement, so
+      // unsigned packages import again.
+      setPublicKey("");
+      expect(isSignatureEnforced()).toBe(false);
+      expect(getPublicKey()).toBe("");
+
+      expect(await verifySignature(signed)).toEqual({ valid: true });
+      expect(await verifySignature(makeManifest())).toEqual({ valid: true });
     });
   });
 });

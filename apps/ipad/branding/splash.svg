@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2732" height="2732" viewBox="0 0 2732 2732">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#0f766e"/>
+  </linearGradient></defs>
+  <rect width="2732" height="2732" fill="url(#bg)"/>
+  <!-- Icon artwork (1024 canvas) scaled 1.4x and centred. Artwork bbox centre
+       is (522, 515), so translate = 1366 - centre * 1.4. Well inside the
+       central square that survives scaleAspectFill cropping on any iPad. -->
+  <g transform="translate(635.2, 645) scale(1.4)">
+    <path d="M 164 512 L 288 512 L 352 330 L 424 694 L 490 512 L 556 512"
+          fill="none" stroke="#ffffff" stroke-width="64" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+    <path d="M 624 596 L 722 700 L 880 432"
+          fill="none" stroke="#ffffff" stroke-width="72" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
