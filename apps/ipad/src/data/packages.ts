@@ -1,6 +1,6 @@
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { closeCatalogue, openCatalogue } from "./catalogue";
-import { initAssets, CONTENT_DIR, ASSETS_SUBDIR } from "./assets";
+import { initAssets, ensureDir, CONTENT_DIR, ASSETS_SUBDIR } from "./assets";
 import { verifySignature } from "./signature";
 import type { ReleaseManifest } from "./types";
 
@@ -127,15 +127,7 @@ export async function activate(manifest: ReleaseManifest): Promise<void> {
   }
 
   // Ensure the plugin's database directory exists
-  try {
-    await Filesystem.mkdir({
-      path: "CapacitorDatabase",
-      directory: Directory.Library,
-      recursive: true,
-    });
-  } catch {
-    // Already exists
-  }
+  await ensureDir("CapacitorDatabase", Directory.Library);
 
   // Copy staged catalogue to the SQLite plugin's location
   await Filesystem.copy({
@@ -146,11 +138,7 @@ export async function activate(manifest: ReleaseManifest): Promise<void> {
   });
 
   // Copy staged assets to the active content directory
-  await Filesystem.mkdir({
-    path: ASSETS_SUBDIR,
-    directory: Directory.Documents,
-    recursive: true,
-  });
+  await ensureDir(ASSETS_SUBDIR, Directory.Documents);
 
   for (const asset of manifest.assets) {
     const stagingPath = `${STAGING_DIR}/${asset.path}`;
