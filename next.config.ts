@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { MAX_UPLOAD_MB } from "./src/lib/media-types";
 
 const nextConfig: NextConfig = {
   // Emit a self-contained server bundle for the Docker image.
@@ -7,7 +8,8 @@ const nextConfig: NextConfig = {
     serverActions: {
       // Uploads (PDFs, storyboard image batches, MP4 videos) go through
       // server actions, so the default 1 MB body limit is far too small.
-      bodySizeLimit: "500mb",
+      // The extra megabyte covers multipart boundaries and field headers.
+      bodySizeLimit: `${MAX_UPLOAD_MB + 1}mb`,
     },
   },
   async headers() {
