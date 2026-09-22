@@ -66,10 +66,21 @@ export async function uploadMediaAction(formData: FormData): Promise<UploadedMed
   const videosOnly = formData.get("videosOnly") === "1";
   const allowed = imagesOnly ? IMAGE_EXTENSIONS : videosOnly ? VIDEO_EXTENSIONS : MEDIA_EXTENSIONS;
   const folderId = Number(text(formData, "folderId"));
-  const result = await addUpload(file, {
-    allowed,
-    folderId: Number.isInteger(folderId) && folderId > 0 ? folderId : null,
-  });
+  let result: Awaited<ReturnType<typeof addUpload>>;
+  try {
+    result = await addUpload(file, {
+      allowed,
+      folderId: Number.isInteger(folderId) && folderId > 0 ? folderId : null,
+    });
+  } catch (err) {
+    // A thrown error reaches the browser only as a failed request, so report
+    // it as a result the upload list can show.
+    console.error(`Upload of ${file.name} failed:`, err);
+    return {
+      ok: false,
+      error: `The server could not add ${file.name}: ${err instanceof Error ? err.message : "unknown error"}`,
+    };
+  }
 
   if (result.ok) revalidateAll();
   return result.ok ? { ok: true, media: result.media } : { ok: false, error: result.error };
