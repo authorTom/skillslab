@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
 import type { Skill, Resource } from "@/data/types";
-import { getSkillBySlug, listResources } from "@/data/catalogue";
+import { getCategory, getSkillBySlug, listResources } from "@/data/catalogue";
 import Header from "@/components/Header";
+import PageTitle from "@/components/PageTitle";
 import ResourceViewer from "@/components/ResourceViewer";
+import EmptyState from "@/components/EmptyState";
+import Button from "@/components/Button";
+import Spinner from "@/components/Spinner";
+import { SearchIcon, StoryboardIcon } from "@/components/icons";
 
 interface SkillPageProps {
   slug: string;
@@ -11,6 +16,7 @@ interface SkillPageProps {
 
 export default function SkillPage({ slug, back }: SkillPageProps) {
   const [skill, setSkill] = useState<Skill | null>(null);
+  const [categoryName, setCategoryName] = useState<string | null>(null);
   const [resources, setResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -22,8 +28,14 @@ export default function SkillPage({ slug, back }: SkillPageProps) {
       if (cancelled) return;
       setSkill(s);
       if (s) {
-        const r = await listResources(s.id);
-        if (!cancelled) setResources(r);
+        const [r, c] = await Promise.all([
+          listResources(s.id),
+          s.category_id !== null ? getCategory(s.category_id) : null,
+        ]);
+        if (!cancelled) {
+          setResources(r);
+          setCategoryName(c?.name ?? null);
+        }
       }
       if (!cancelled) setLoading(false);
     }
@@ -34,10 +46,11 @@ export default function SkillPage({ slug, back }: SkillPageProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-stone-50">
-        <Header title="Loading..." onBack={back} />
-        <div className="flex items-center justify-center p-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-teal-600" />
+      <div className="min-h-screen bg-canvas">
+        <Header onBack={back} backLabel="Skills" />
+        <div className="flex items-center justify-center p-24 text-ink-3" role="status">
+          <Spinner className="h-7 w-7" />
+          <span className="sr-only">Loading skill</span>
         </div>
       </div>
     );
@@ -45,38 +58,36 @@ export default function SkillPage({ slug, back }: SkillPageProps) {
 
   if (!skill) {
     return (
-      <div className="min-h-screen bg-stone-50">
-        <Header title="Not found" onBack={back} />
-        <main className="mx-auto max-w-6xl px-4 py-12 text-center">
-          <p className="font-medium text-stone-600">Skill not found</p>
-          <p className="mt-1 text-sm text-stone-400">
+      <div className="min-h-screen bg-canvas">
+        <Header onBack={back} backLabel="Skills" />
+        <main className="mx-auto max-w-6xl px-5 pt-16 sm:px-8">
+          <h1 className="sr-only">Skill not found</h1>
+          <EmptyState
+            icon={<SearchIcon className="h-7 w-7" />}
+            title="Skill not found"
+            action={<Button variant="secondary" onClick={back}>Back to skills</Button>}
+          >
             This skill may have been removed in a content update.
-          </p>
+          </EmptyState>
         </main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-stone-50">
-      <Header title={skill.title} onBack={back} />
+    <div className="min-h-screen bg-canvas">
+      <Header title={skill.title} onBack={back} backLabel="Skills" />
 
-      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-        <header className="max-w-3xl">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{skill.title}</h1>
-          {skill.description && (
-            <p className="mt-2 leading-relaxed text-stone-500">{skill.description}</p>
-          )}
-        </header>
+      <main className="safe-bottom mx-auto max-w-6xl px-5 pb-20 sm:px-8">
+        <PageTitle className="pt-2" eyebrow={categoryName} title={skill.title}>
+          {skill.description && <p>{skill.description}</p>}
+        </PageTitle>
 
-        <div className="mt-8">
+        <div className="mt-8 border-t border-line pt-8">
           {resources.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-stone-300 p-12 text-center">
-              <p className="font-medium text-stone-600">No resources yet</p>
-              <p className="mt-1 text-sm text-stone-400">
-                Materials for this skill haven't been added. Check back after a content update.
-              </p>
-            </div>
+            <EmptyState outlined icon={<StoryboardIcon className="h-7 w-7" />} title="No resources yet">
+              Materials for this skill haven’t been added. Check back after a content update.
+            </EmptyState>
           ) : (
             <ResourceViewer resources={resources} />
           )}

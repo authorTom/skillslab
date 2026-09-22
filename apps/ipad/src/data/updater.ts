@@ -30,6 +30,9 @@ export interface UpdateError {
   error: string;
 }
 
+/** The reason `checkForUpdate` gives when the installed content is current. */
+export const UP_TO_DATE = "Content is up to date.";
+
 export async function checkForUpdate(): Promise<
   | { available: true; manifest: ReleaseManifest }
   | { available: false; reason: string }
@@ -56,7 +59,7 @@ export async function checkForUpdate(): Promise<
   }
 
   if (response.status === 304) {
-    return { available: false, reason: "Content is up to date." };
+    return { available: false, reason: UP_TO_DATE };
   }
 
   if (!response.ok) {
@@ -76,7 +79,7 @@ export async function checkForUpdate(): Promise<
   if (state.current?.releaseId === manifest.release_id) {
     const newEtag = response.headers.get("ETag");
     if (newEtag) setLastEtag(newEtag);
-    return { available: false, reason: "Content is up to date." };
+    return { available: false, reason: UP_TO_DATE };
   }
 
   return { available: true, manifest };

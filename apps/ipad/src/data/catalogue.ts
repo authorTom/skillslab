@@ -58,6 +58,11 @@ export async function getSkill(id: number): Promise<Skill | null> {
   return rows[0] ?? null;
 }
 
+export async function getCategory(id: number): Promise<Category | null> {
+  const rows = await query<Category>("SELECT * FROM categories WHERE id = ?", [id]);
+  return rows[0] ?? null;
+}
+
 export async function getSkillBySlug(slug: string): Promise<Skill | null> {
   const rows = await query<Skill>("SELECT * FROM skills WHERE slug = ?", [slug]);
   return rows[0] ?? null;
