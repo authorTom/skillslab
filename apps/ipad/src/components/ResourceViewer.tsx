@@ -68,6 +68,11 @@ export default function ResourceViewer({ resources }: ResourceViewerProps) {
 function ResourcePanel({ resource }: { resource: Resource }) {
   switch (resource.type) {
     case "video":
+      // Releases built before uploaded videos kept their own type exported
+      // them as "video" with a bundled asset; play those from the file.
+      if (resource.asset) {
+        return <LocalVideoPanel asset={resource.asset} title={resource.title} />;
+      }
       return <VimeoPanel url={resource.content} />;
     case "local_video":
       return <LocalVideoPanel asset={resource.asset} title={resource.title} />;

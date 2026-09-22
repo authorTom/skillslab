@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { Readable } from "stream";
 import { getRelease } from "@/lib/offline/releases";
 
 export async function GET(
@@ -39,8 +40,10 @@ export async function GET(
     ext === ".sqlite" ? "application/x-sqlite3" :
     "application/octet-stream";
 
-  const data = fs.readFileSync(resolved);
-  return new Response(new Uint8Array(data), {
+  // Stream from disk: release assets include videos that can run to hundreds
+  // of megabytes, too large to buffer per request.
+  const body = Readable.toWeb(fs.createReadStream(resolved)) as ReadableStream<Uint8Array>;
+  return new Response(body, {
     headers: {
       "Content-Type": contentType,
       "Content-Length": String(stat.size),
