@@ -1,40 +1,53 @@
+import { useRef } from "react";
+import { CloseIcon, SearchIcon } from "./icons";
+
 interface SearchBarProps {
   value: string;
   onChange: (value: string) => void;
 }
 
 export default function SearchBar({ value, onChange }: SearchBarProps) {
+  const input = useRef<HTMLInputElement>(null);
+
   return (
-    <div className="relative">
-      <svg
-        className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      >
-        <circle cx="11" cy="11" r="7" />
-        <path d="m20 20-3.5-3.5" />
-      </svg>
+    <form
+      role="search"
+      className="relative"
+      // The keyboard's Search key submits; results are already live, so just
+      // dismiss the keyboard to reveal them.
+      onSubmit={(e) => {
+        e.preventDefault();
+        input.current?.blur();
+      }}
+    >
+      <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-ink-3" />
       <input
+        ref={input}
         type="search"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Search skills..."
-        className="w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-10 pr-4 text-sm shadow-sm outline-none transition placeholder:text-stone-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+        placeholder="Search skills"
+        aria-label="Search skills"
+        enterKeyHint="search"
+        autoCorrect="off"
+        spellCheck={false}
+        className="h-12 w-full appearance-none rounded-xl bg-surface pl-11 pr-12 text-base text-ink shadow-card ring-1 ring-inset ring-line outline-none transition placeholder:text-ink-3 focus:ring-2 focus:ring-accent [&::-webkit-search-cancel-button]:hidden"
       />
       {value && (
         <button
-          onClick={() => onChange("")}
-          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-stone-400 hover:text-stone-600"
+          type="button"
+          onClick={() => {
+            onChange("");
+            input.current?.focus();
+          }}
+          className="absolute right-0.5 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full text-ink-3 transition active:opacity-50"
           aria-label="Clear search"
         >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-ink-3 text-surface">
+            <CloseIcon className="h-3 w-3" />
+          </span>
         </button>
       )}
-    </div>
+    </form>
   );
 }

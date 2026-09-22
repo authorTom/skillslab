@@ -2,6 +2,10 @@ import { useEffect, useState } from "react";
 import { getReleaseInfo, getContentSchemaVersion } from "@/data/catalogue";
 import { getPackageState } from "@/data/packages";
 import Header from "@/components/Header";
+import PageTitle from "@/components/PageTitle";
+import BrandMark from "@/components/BrandMark";
+import { GroupedSection, InfoList, InfoRow, NavRow } from "@/components/Grouped";
+import { RefreshIcon } from "@/components/icons";
 
 interface SettingsPageProps {
   back: () => void;
@@ -39,78 +43,60 @@ export default function SettingsPage({ back, navigate }: SettingsPageProps) {
     load();
   }, []);
 
+  const published = info?.createdAt ? formatDate(info.createdAt) : null;
+
   return (
-    <div className="min-h-screen bg-stone-50">
-      <Header title="Settings" onBack={back} />
+    <div className="min-h-screen bg-canvas">
+      <Header title="Settings" onBack={back} backLabel="Skills" />
 
-      <main className="mx-auto max-w-2xl px-4 py-8">
-        <section className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
-          <div className="border-b border-stone-200 px-5 py-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-stone-400">
-              Content Package
-            </h2>
-          </div>
+      <main className="safe-bottom mx-auto max-w-2xl space-y-9 px-5 pb-20 pt-2 sm:px-8">
+        <PageTitle title="Settings" />
 
-          {info ? (
-            <dl className="divide-y divide-stone-100">
-              <InfoRow label="Version" value={info.releaseVersion} />
-              <InfoRow label="Release ID" value={info.releaseId} mono />
-              <InfoRow
-                label="Published"
-                value={info.createdAt ? formatDate(info.createdAt) : "Unknown"}
-              />
-              <InfoRow label="Schema version" value={String(info.schemaVersion)} />
-              {info.hasPrevious && (
-                <InfoRow label="Rollback" value="Previous version available" />
-              )}
-            </dl>
-          ) : (
-            <p className="px-5 py-6 text-sm text-stone-500">No content loaded.</p>
-          )}
-        </section>
-
-        <section className="mt-6 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
-          <div className="border-b border-stone-200 px-5 py-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-stone-400">
-              Content Updates
-            </h2>
-          </div>
-          <div className="px-5 py-4">
-            <p className="text-sm text-stone-500">
-              Check for new content from the CMS server, or import a content package manually.
+        <div className="flex items-center gap-4 rounded-2xl bg-surface p-5 shadow-card ring-1 ring-line">
+          <BrandMark className="h-16 w-16 shrink-0 drop-shadow-sm" />
+          <div className="min-w-0">
+            <p className="text-lg font-semibold tracking-tight">SkillsLab Reader</p>
+            <p className="mt-0.5 text-[0.9375rem] text-ink-2">
+              {info
+                ? `Content ${info.releaseVersion}${published ? ` · Published ${published}` : ""}`
+                : "No content installed"}
             </p>
-            <button
-              onClick={() => navigate("/update")}
-              className="mt-3 rounded-lg bg-teal-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-teal-700"
-            >
-              Manage updates
-            </button>
           </div>
-        </section>
+        </div>
 
-        <section className="mt-6 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
-          <div className="border-b border-stone-200 px-5 py-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-stone-400">
-              About
-            </h2>
-          </div>
-          <dl className="divide-y divide-stone-100">
+        <GroupedSection
+          title="Content package"
+          footer={info?.hasPrevious ? "The previously installed version is kept, so you can roll back if needed." : undefined}
+        >
+          {info ? (
+            <InfoList>
+              <InfoRow label="Version" value={info.releaseVersion} />
+              <InfoRow label="Published" value={published ?? "Unknown"} />
+              <InfoRow label="Release ID" value={info.releaseId} mono />
+              <InfoRow label="Schema version" value={String(info.schemaVersion)} />
+              {info.hasPrevious && <InfoRow label="Rollback" value="Previous version available" />}
+            </InfoList>
+          ) : (
+            <p className="px-4 py-4 text-[0.9375rem] text-ink-2">No content loaded.</p>
+          )}
+        </GroupedSection>
+
+        <GroupedSection title="Content updates">
+          <NavRow
+            icon={<RefreshIcon className="h-[18px] w-[18px]" />}
+            title="Manage updates"
+            subtitle="Check the CMS server or import a package"
+            onClick={() => navigate("/update")}
+          />
+        </GroupedSection>
+
+        <GroupedSection title="About">
+          <InfoList>
             <InfoRow label="App" value="SkillsLab Reader" />
             <InfoRow label="Platform" value="iPad (iOS)" />
-          </dl>
-        </section>
+          </InfoList>
+        </GroupedSection>
       </main>
-    </div>
-  );
-}
-
-function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex items-baseline justify-between gap-4 px-5 py-3">
-      <dt className="text-sm text-stone-500">{label}</dt>
-      <dd className={`text-right text-sm font-medium text-stone-900 ${mono ? "font-mono text-xs" : ""}`}>
-        {value}
-      </dd>
     </div>
   );
 }

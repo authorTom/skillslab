@@ -1,27 +1,91 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import Header from "@/components/Header";
-import { useUpdater } from "@/hooks/useUpdater";
+import PageTitle from "@/components/PageTitle";
+import Button from "@/components/Button";
+import { GroupedBody, GroupedSection, Notice } from "@/components/Grouped";
+import {
+  AlertIcon,
+  CheckCircleIcon,
+  CheckIcon,
+  DownloadIcon,
+  FolderIcon,
+  PackageIcon,
+  RefreshIcon,
+  RollbackIcon,
+  ShieldIcon,
+} from "@/components/icons";
+import { useUpdater, type UpdateState } from "@/hooks/useUpdater";
 import { getServerUrl, setServerUrl } from "@/data/settings";
 import { getPackageState } from "@/data/packages";
-import { getPublicKey, setPublicKey, isSignatureEnforced } from "@/data/signature";
+import { getPublicKey, setPublicKey } from "@/data/signature";
+import { UP_TO_DATE } from "@/data/updater";
 
 interface UpdatePageProps {
   back: () => void;
   onContentChanged: () => void;
 }
 
+/** Which section started the current operation, so its result is shown
+ *  next to the button the user pressed rather than somewhere off screen. */
+type Origin = "online" | "import" | "rollback";
+
+// 16px+ text stops iOS zooming the page when a field is focused.
+const INPUT =
+  "h-11 min-w-0 flex-1 rounded-xl bg-surface-2 px-3.5 text-base text-ink ring-1 ring-inset ring-transparent outline-none transition placeholder:text-ink-3 focus:bg-surface focus:ring-2 focus:ring-accent";
+
 export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) {
   const { state, check, download, scanImports, importDir, rollback, reset } =
     useUpdater(onContentChanged);
   const [url, setUrl] = useState(getServerUrl);
+  const [savedUrl, setSavedUrl] = useState(getServerUrl);
   const [canRollback, setCanRollback] = useState(false);
+  const [origin, setOrigin] = useState<Origin | null>(null);
+  const [importingDir, setImportingDir] = useState<string | null>(null);
+  const [confirmingRollback, setConfirmingRollback] = useState(false);
+  const urlId = useId();
 
   useEffect(() => {
     getPackageState().then((s) => setCanRollback(s.previous !== null));
   }, [state.status]);
 
-  function handleSaveUrl() {
-    setServerUrl(url);
+  const urlDirty = url.trim() !== savedUrl;
+
+  function saveUrl() {
+    setServerUrl(url.trim());
+    const normalised = getServerUrl();
+    setSavedUrl(normalised);
+    setUrl(normalised);
+  }
+
+  function handleCheck() {
+    // The updater reads the saved URL, so an edited but unsaved address
+    // would otherwise be ignored.
+    if (urlDirty) saveUrl();
+    setOrigin("online");
+    check();
+  }
+
+  function handleScan() {
+    setOrigin("import");
+    scanImports();
+  }
+
+  async function handleImport(dir: string) {
+    setOrigin("import");
+    setImportingDir(dir);
+    await importDir(dir);
+    setImportingDir(null);
+  }
+
+  async function handleRollback() {
+    setOrigin("rollback");
+    await rollback();
+    setConfirmingRollback(false);
+  }
+
+  function finish() {
+    reset();
+    back();
   }
 
   const busy =
@@ -33,155 +97,241 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
     state.status === "rolling-back";
 
   return (
-    <div className="min-h-screen bg-stone-50">
-      <Header title="Content Updates" onBack={back} />
+    <div className="min-h-screen bg-canvas">
+      <Header title="Content updates" onBack={back} backLabel="Back" />
 
-      <main className="mx-auto max-w-2xl space-y-6 px-4 py-8">
-        {/* Server URL */}
-        <Section title="Server">
-          <label className="block text-sm text-stone-500">
-            CMS server URL
-          </label>
-          <div className="mt-2 flex gap-2">
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://skills.example.nhs.uk"
-              className="flex-1 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-            />
-            <button
-              onClick={handleSaveUrl}
-              className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-800"
-            >
-              Save
-            </button>
-          </div>
-        </Section>
+      <main className="safe-bottom mx-auto max-w-2xl space-y-9 px-5 pb-20 pt-2 sm:px-8">
+        <PageTitle title="Content updates">
+          <p>Keep this iPad’s skills library current from your CMS server, or from a package copied onto the device.</p>
+        </PageTitle>
 
-        {/* Online update */}
-        <Section title="Online Update">
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={check}
-              disabled={busy || !url}
-              className="rounded-lg bg-teal-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-teal-700 disabled:opacity-50"
-            >
-              {state.status === "checking" ? "Checking..." : "Check for updates"}
-            </button>
-          </div>
-
-          {state.status === "available" && state.manifest && (
-            <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-4">
-              <p className="font-medium text-teal-800">
-                Update available: v{state.manifest.release_version}
-              </p>
-              <p className="mt-1 text-sm text-teal-700">
-                {state.manifest.counts.skills} skills, {state.manifest.counts.resources} resources,{" "}
-                {state.manifest.counts.assets} assets
-                ({formatBytes(state.manifest.total_uncompressed_bytes)})
-              </p>
-              <button
-                onClick={download}
-                className="mt-3 rounded-lg bg-teal-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-teal-700"
+        <GroupedSection title="Online update">
+          <GroupedBody>
+            <label htmlFor={urlId} className="block text-[0.9375rem] font-medium text-ink">
+              CMS server URL
+            </label>
+            <div className="mt-2 flex gap-2">
+              <input
+                id={urlId}
+                type="url"
+                inputMode="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://skills.example.nhs.uk"
+                className={INPUT}
+              />
+              <Button
+                variant="secondary"
+                onClick={saveUrl}
+                disabled={!urlDirty}
+                icon={!urlDirty && savedUrl ? <CheckIcon className="h-4 w-4" /> : undefined}
               >
-                Download and install
-              </button>
+                {!urlDirty && savedUrl ? "Saved" : "Save"}
+              </Button>
             </div>
-          )}
+          </GroupedBody>
 
-          {(state.status === "downloading" || state.status === "activating") && state.progress && (
-            <ProgressBar progress={state.progress} activating={state.status === "activating"} />
-          )}
-
-          {state.status === "done" && (
-            <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4">
-              <p className="font-medium text-green-800">
-                Content updated successfully.
+          <GroupedBody className="border-t border-line">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <p className="max-w-sm text-[0.9375rem] leading-relaxed text-ink-2">
+                Check the server for a newer content package.
               </p>
-              <button
-                onClick={() => { reset(); back(); }}
-                className="mt-3 rounded-lg bg-green-700 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-green-800"
+              <Button
+                icon={<RefreshIcon className="h-4 w-4" />}
+                busy={state.status === "checking"}
+                disabled={busy || !url.trim()}
+                onClick={handleCheck}
               >
-                Done
-              </button>
+                {state.status === "checking" ? "Checking…" : "Check for updates"}
+              </Button>
             </div>
-          )}
-        </Section>
 
-        {/* Manual import */}
-        <Section title="Manual Import">
-          <p className="text-sm text-stone-500">
-            Place a content package directory inside the app's <strong>import</strong> folder
-            using the Files app, then scan below.
-          </p>
-          <button
-            onClick={scanImports}
-            disabled={busy}
-            className="mt-3 rounded-lg border border-stone-200 bg-white px-5 py-2.5 text-sm font-medium text-stone-700 transition hover:border-teal-300 disabled:opacity-50"
-          >
-            {state.status === "scanning" ? "Scanning..." : "Scan for packages"}
-          </button>
+            {state.status === "available" && state.manifest && (
+              <div className="mt-5 flex animate-fade-in flex-wrap items-center gap-4 rounded-xl bg-accent-soft p-4">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent text-on-accent">
+                  <PackageIcon className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1 text-accent-ink" role="status">
+                  <p className="font-semibold">Version {state.manifest.release_version} is available</p>
+                  <p className="text-[0.9375rem]">
+                    {state.manifest.counts.skills} skills · {state.manifest.counts.resources} resources ·{" "}
+                    {formatBytes(state.manifest.total_uncompressed_bytes)}
+                  </p>
+                </div>
+                <Button icon={<DownloadIcon className="h-4 w-4" />} onClick={download}>
+                  Download and install
+                </Button>
+              </div>
+            )}
+
+            {(state.status === "downloading" || state.status === "activating") && state.progress && (
+              <ProgressBar progress={state.progress} activating={state.status === "activating"} />
+            )}
+
+            {origin === "online" && <Outcome state={state} failedTitle="Update failed" problemTitle="Couldn’t check for updates" onDone={finish} />}
+          </GroupedBody>
+        </GroupedSection>
+
+        <GroupedSection title="Manual import">
+          <GroupedBody>
+            <p className="text-[0.9375rem] leading-relaxed text-ink-2">
+              In the Files app, copy a content package folder into{" "}
+              <span className="font-medium text-ink">On My iPad › SkillsLab › import</span>, then scan for it here.
+            </p>
+            <Button
+              className="mt-4"
+              variant="secondary"
+              icon={<FolderIcon className="h-4 w-4" />}
+              busy={state.status === "scanning"}
+              disabled={busy}
+              onClick={handleScan}
+            >
+              {state.status === "scanning" ? "Scanning…" : "Scan for packages"}
+            </Button>
+
+            {origin === "import" && <Outcome state={state} failedTitle="Import failed" problemTitle="Nothing to import" onDone={finish} />}
+          </GroupedBody>
 
           {state.importDirs.length > 0 && (
-            <ul className="mt-4 divide-y divide-stone-100 rounded-xl border border-stone-200 bg-white">
-              {state.importDirs.map((dir) => (
-                <li key={dir} className="flex items-center justify-between px-4 py-3">
-                  <span className="text-sm font-medium text-stone-700">
-                    {dir.replace("import/", "")}
-                  </span>
-                  <button
-                    onClick={() => importDir(dir)}
-                    disabled={busy}
-                    className="rounded-lg bg-teal-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-teal-700 disabled:opacity-50"
-                  >
-                    {state.status === "importing" ? "Importing..." : "Import"}
-                  </button>
-                </li>
-              ))}
+            <ul className="divide-y divide-line border-t border-line" aria-label="Packages found">
+              {state.importDirs.map((dir) => {
+                const name = dir.replace("import/", "");
+                return (
+                  <li key={dir} className="flex min-h-16 items-center gap-3.5 px-5 py-2.5">
+                    <PackageIcon className="h-5 w-5 shrink-0 text-ink-3" />
+                    <span className="min-w-0 flex-1 truncate text-[0.9375rem] font-medium">{name}</span>
+                    <Button
+                      variant="tinted"
+                      busy={importingDir === dir}
+                      disabled={busy}
+                      onClick={() => handleImport(dir)}
+                      aria-label={`Import ${name}`}
+                    >
+                      {importingDir === dir ? "Importing…" : "Import"}
+                    </Button>
+                  </li>
+                );
+              })}
             </ul>
           )}
-        </Section>
+        </GroupedSection>
 
-        {/* Rollback */}
-        {canRollback && (
-          <Section title="Rollback">
-            <p className="text-sm text-stone-500">
-              Revert to the previously installed content package.
-            </p>
-            <button
-              onClick={rollback}
-              disabled={busy}
-              className="mt-3 rounded-lg border border-red-200 bg-white px-5 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
-            >
-              {state.status === "rolling-back" ? "Rolling back..." : "Roll back"}
-            </button>
-          </Section>
-        )}
-
-        {/* Signature verification */}
         <SignatureSection />
 
-        {/* Error display */}
-        {state.error && state.status !== "done" && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <p className="text-sm text-amber-800">{state.error}</p>
-          </div>
+        {(canRollback || origin === "rollback") && (
+          <GroupedSection title="Rollback">
+            <GroupedBody>
+              {confirmingRollback ? (
+                <div className="animate-fade-in rounded-xl bg-danger-soft p-4 text-danger-ink" role="group" aria-label="Confirm rollback">
+                  <p className="font-semibold">Roll back to the previous content?</p>
+                  <p className="mt-0.5 text-[0.9375rem] leading-relaxed">
+                    The installed content will be replaced by the package that was installed before it.
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button
+                      variant="destructive"
+                      busy={state.status === "rolling-back"}
+                      onClick={handleRollback}
+                    >
+                      {state.status === "rolling-back" ? "Rolling back…" : "Roll back"}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      disabled={state.status === "rolling-back"}
+                      onClick={() => setConfirmingRollback(false)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <p className="max-w-sm text-[0.9375rem] leading-relaxed text-ink-2">
+                    Replace the current content with the previously installed package.
+                  </p>
+                  {canRollback && (
+                    <Button
+                      variant="danger"
+                      icon={<RollbackIcon className="h-4 w-4" />}
+                      disabled={busy}
+                      onClick={() => setConfirmingRollback(true)}
+                    >
+                      Roll back…
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {origin === "rollback" && (
+                <Outcome
+                  state={state}
+                  failedTitle="Rollback failed"
+                  problemTitle="Couldn’t roll back"
+                  doneTitle="Rolled back"
+                  doneBody="The previously installed content has been restored."
+                  onDone={finish}
+                />
+              )}
+            </GroupedBody>
+          </GroupedSection>
         )}
       </main>
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
-      <div className="border-b border-stone-200 px-5 py-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-stone-400">{title}</h2>
-      </div>
-      <div className="px-5 py-4">{children}</div>
-    </section>
-  );
+/** The result of the last operation: success, "up to date", or a problem. */
+function Outcome({
+  state,
+  failedTitle,
+  problemTitle,
+  doneTitle = "Content updated",
+  doneBody = "The skills library now shows the new content.",
+  onDone,
+}: {
+  state: UpdateState;
+  failedTitle: string;
+  /** Title for a problem that stopped an operation before it began. */
+  problemTitle: string;
+  doneTitle?: string;
+  doneBody?: string;
+  onDone: () => void;
+}) {
+  let notice: React.ReactNode = null;
+
+  if (state.status === "done") {
+    notice = (
+      <Notice
+        tone="success"
+        icon={<CheckCircleIcon className="h-5 w-5" />}
+        title={doneTitle}
+        action={<Button onClick={onDone}>Done</Button>}
+      >
+        {doneBody}
+      </Notice>
+    );
+  } else if (state.error === UP_TO_DATE) {
+    notice = (
+      <Notice tone="success" icon={<CheckCircleIcon className="h-5 w-5" />} title="You’re up to date">
+        This iPad already has the latest content.
+      </Notice>
+    );
+  } else if (state.error) {
+    notice = (
+      <Notice
+        tone="warning"
+        icon={<AlertIcon className="h-5 w-5" />}
+        title={state.status === "error" ? failedTitle : problemTitle}
+      >
+        {state.error}
+      </Notice>
+    );
+  }
+
+  return notice && <div className="mt-5">{notice}</div>;
 }
 
 function ProgressBar({
@@ -191,29 +341,37 @@ function ProgressBar({
   progress: { filesTotal: number; filesDone: number; bytesTotal: number; bytesDownloaded: number };
   activating: boolean;
 }) {
+  const labelId = useId();
   const pct = progress.bytesTotal > 0
     ? Math.round((progress.bytesDownloaded / progress.bytesTotal) * 100)
     : 0;
 
   return (
-    <div className="mt-4">
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-stone-600">
+    <div className="mt-5">
+      <div className="flex items-center justify-between text-[0.9375rem]">
+        <span id={labelId} className="text-ink">
           {activating
-            ? "Activating content..."
+            ? "Installing content…"
             : `Downloading file ${progress.filesDone} of ${progress.filesTotal}`}
         </span>
-        <span className="tabular-nums text-stone-400">{pct}%</span>
+        {!activating && <span className="tabular-nums text-ink-2">{pct}%</span>}
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-stone-200">
+      <div
+        role="progressbar"
+        aria-labelledby={labelId}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={activating ? undefined : pct}
+        className="mt-2 h-2 overflow-hidden rounded-full bg-surface-3"
+      >
         <div
-          className="h-full rounded-full bg-teal-600 transition-all duration-300"
+          className={`h-full rounded-full bg-accent transition-[width] duration-300 ${activating ? "animate-pulse" : ""}`}
           style={{ width: `${activating ? 100 : pct}%` }}
         />
       </div>
       {!activating && progress.bytesTotal > 0 && (
-        <p className="mt-1 text-xs text-stone-400">
-          {formatBytes(progress.bytesDownloaded)} / {formatBytes(progress.bytesTotal)}
+        <p className="mt-1.5 text-[0.8125rem] tabular-nums text-ink-3">
+          {formatBytes(progress.bytesDownloaded)} of {formatBytes(progress.bytesTotal)}
         </p>
       )}
     </div>
@@ -222,58 +380,72 @@ function ProgressBar({
 
 function SignatureSection() {
   const [key, setKey] = useState(getPublicKey);
-  const enforced = isSignatureEnforced();
+  // Tracked in state so the status updates as soon as a key is saved.
+  const [savedKey, setSavedKey] = useState(getPublicKey);
+  const keyId = useId();
+  const enforced = savedKey.length > 0;
+  const dirty = key.trim() !== savedKey;
 
   function handleSave() {
     setPublicKey(key.trim());
+    setSavedKey(key.trim());
+    setKey(key.trim());
   }
 
   function handleClear() {
     setKey("");
     setPublicKey("");
+    setSavedKey("");
   }
 
   return (
-    <Section title="Signature Verification">
-      <div className="flex items-center gap-2">
-        <span
-          className={`inline-block h-2.5 w-2.5 rounded-full ${
-            enforced ? "bg-green-500" : "bg-stone-300"
-          }`}
-        />
-        <span className="text-sm text-stone-600">
-          {enforced ? "Enforced" : "Not configured"}
-        </span>
-      </div>
-      <p className="mt-2 text-sm text-stone-500">
-        Paste a base64-encoded Ed25519 public key. When set, only signed content
-        packages will be accepted.
-      </p>
-      <div className="mt-3 flex gap-2">
-        <input
-          type="text"
-          value={key}
-          onChange={(e) => setKey(e.target.value)}
-          placeholder="Base64 public key (32 bytes)"
-          className="flex-1 rounded-lg border border-stone-200 bg-white px-3 py-2 font-mono text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-        />
-        <button
-          onClick={handleSave}
-          disabled={!key.trim()}
-          className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-800 disabled:opacity-50"
-        >
-          Save
-        </button>
-        {enforced && (
-          <button
-            onClick={handleClear}
-            className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
+    <GroupedSection
+      title="Signature verification"
+      footer="Paste a base64-encoded Ed25519 public key (32 bytes). When a key is set, only content packages signed with it are accepted."
+    >
+      <GroupedBody>
+        <div className="flex items-center gap-3.5">
+          <span
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+              enforced ? "bg-success-soft text-success-ink" : "bg-surface-2 text-ink-3"
+            }`}
           >
-            Clear
-          </button>
-        )}
-      </div>
-    </Section>
+            <ShieldIcon className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 flex-1" role="status">
+            <p className="text-[0.9375rem] font-medium">{enforced ? "Enforced" : "Not configured"}</p>
+            <p className="text-[0.8125rem] text-ink-3">
+              {enforced ? "Only signed packages are accepted" : "Packages are accepted without a signature"}
+            </p>
+          </div>
+        </div>
+
+        <label htmlFor={keyId} className="mt-5 block text-[0.9375rem] font-medium text-ink">
+          Public key
+        </label>
+        <div className="mt-2 flex gap-2">
+          <input
+            id={keyId}
+            type="text"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="Base64 public key"
+            className={`${INPUT} font-mono`}
+          />
+          <Button variant="secondary" onClick={handleSave} disabled={!dirty || !key.trim()}>
+            Save
+          </Button>
+          {enforced && (
+            <Button variant="danger" onClick={handleClear}>
+              Clear
+            </Button>
+          )}
+        </div>
+      </GroupedBody>
+    </GroupedSection>
   );
 }
 

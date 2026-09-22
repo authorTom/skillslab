@@ -1,49 +1,79 @@
+import { useScrolled } from "@/hooks/useScrolled";
+import BrandMark from "./BrandMark";
+import { ChevronLeftIcon, SettingsIcon } from "./icons";
+
 interface HeaderProps {
+  /** Shown in the bar once the page's own large title scrolls under it. */
   title?: string;
   onBack?: () => void;
+  backLabel?: string;
   onSettings?: () => void;
+  /** Show the SkillsLab lockup on the leading edge (home screen). */
+  brand?: boolean;
   children?: React.ReactNode;
 }
 
-export default function Header({ title, onBack, onSettings, children }: HeaderProps) {
+/**
+ * iPadOS-style navigation bar. It sits flush with the page until content
+ * scrolls beneath it, then turns translucent with a hairline and shows the
+ * page title, the way UIKit's large-title navigation bars behave.
+ */
+export default function Header({ title, onBack, backLabel = "Back", onSettings, brand, children }: HeaderProps) {
+  const raised = useScrolled(4);
+  const showTitle = useScrolled(56);
+
   return (
-    <header className="safe-top sticky top-0 z-30 border-b border-stone-200 bg-white/95 backdrop-blur-sm">
-      <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
-        {onBack && (
-          <button
-            onClick={onBack}
-            className="flex items-center gap-1 text-sm text-teal-700"
-            aria-label="Go back"
+    <header
+      className={`safe-top sticky top-0 z-30 border-b transition-[background-color,border-color] duration-200 ${
+        raised
+          ? "border-line bg-canvas/80 backdrop-blur-xl backdrop-saturate-150"
+          : "border-transparent bg-canvas"
+      }`}
+    >
+      <div className="relative mx-auto flex h-14 max-w-6xl items-center px-3 sm:px-5">
+        <div className="flex min-w-0 flex-1 items-center">
+          {onBack ? (
+            <button
+              type="button"
+              onClick={onBack}
+              className="-ml-1 flex min-h-11 items-center gap-0.5 rounded-lg pl-0.5 pr-3 text-[1.0625rem] text-accent-ink transition-opacity active:opacity-50"
+            >
+              <ChevronLeftIcon className="h-6 w-6" />
+              {backLabel}
+            </button>
+          ) : brand ? (
+            <div className="flex items-center gap-2.5 pl-1.5">
+              <BrandMark className="h-8 w-8 drop-shadow-sm" />
+              <span className="text-[1.0625rem] font-semibold tracking-[-0.01em]">SkillsLab</span>
+            </div>
+          ) : null}
+        </div>
+
+        {title && (
+          // Decorative: every page repeats its title as a visible h1.
+          <p
+            aria-hidden="true"
+            className={`pointer-events-none absolute inset-x-36 truncate text-center text-[1.0625rem] font-semibold tracking-[-0.01em] transition-[opacity,transform] duration-200 ${
+              showTitle ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
+            }`}
           >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-            Back
-          </button>
+            {title}
+          </p>
         )}
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          {!onBack && (
-            <svg className="h-6 w-6 shrink-0 text-teal-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
-            </svg>
-          )}
-          {title && (
-            <h1 className="truncate text-lg font-semibold tracking-tight">{title}</h1>
+
+        <div className="flex flex-1 items-center justify-end gap-1">
+          {children}
+          {onSettings && (
+            <button
+              type="button"
+              onClick={onSettings}
+              aria-label="Settings"
+              className="flex h-11 w-11 items-center justify-center rounded-full text-ink-2 transition hover:bg-surface-2 active:bg-surface-3"
+            >
+              <SettingsIcon className="h-[22px] w-[22px]" />
+            </button>
           )}
         </div>
-        {children}
-        {onSettings && (
-          <button
-            onClick={onSettings}
-            className="rounded-lg p-2 text-stone-400 transition hover:bg-stone-100 hover:text-stone-600"
-            aria-label="Settings"
-          >
-            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-          </button>
-        )}
       </div>
     </header>
   );

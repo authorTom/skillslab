@@ -6,36 +6,43 @@ import HomePage from "@/pages/HomePage";
 import SkillPage from "@/pages/SkillPage";
 import SettingsPage from "@/pages/SettingsPage";
 import UpdatePage from "@/pages/UpdatePage";
+import BrandMark from "@/components/BrandMark";
+import Button from "@/components/Button";
+import Spinner from "@/components/Spinner";
+import { DownloadIcon } from "@/components/icons";
 
 type AppState = "loading" | "empty" | "ready";
+
+async function openContent(): Promise<AppState> {
+  try {
+    await initAssets();
+    return (await openCatalogue()) ? "ready" : "empty";
+  } catch {
+    return "empty";
+  }
+}
 
 export default function App() {
   const [state, setState] = useState<AppState>("loading");
   const [contentKey, setContentKey] = useState(0);
   const { page, params, navigate, back } = useRouter();
 
-  const loadContent = useCallback(async () => {
-    setState("loading");
-    try {
-      await initAssets();
-      const opened = await openCatalogue();
-      setState(opened ? "ready" : "empty");
-    } catch {
-      setState("empty");
-    }
-  }, []);
-
   useEffect(() => {
-    loadContent();
+    let cancelled = false;
+    openContent().then((next) => {
+      if (!cancelled) setState(next);
+    });
     return () => {
+      cancelled = true;
       if (isOpen()) closeCatalogue();
     };
-  }, [loadContent]);
+  }, []);
 
-  const handleContentChanged = useCallback(() => {
+  const handleContentChanged = useCallback(async () => {
     setContentKey((k) => k + 1);
-    loadContent();
-  }, [loadContent]);
+    setState("loading");
+    setState(await openContent());
+  }, []);
 
   if (page === "update") {
     return <UpdatePage back={back} onContentChanged={handleContentChanged} />;
@@ -43,10 +50,11 @@ export default function App() {
 
   if (state === "loading") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-stone-50">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-stone-200 border-t-teal-600" />
-          <p className="text-sm text-stone-400">Loading content...</p>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-canvas" role="status">
+        <BrandMark className="h-16 w-16 drop-shadow-sm" />
+        <div className="flex items-center gap-2.5 text-ink-2">
+          <Spinner className="h-4 w-4" />
+          <span className="text-[0.9375rem]">Loading content…</span>
         </div>
       </div>
     );
@@ -54,23 +62,20 @@ export default function App() {
 
   if (state === "empty") {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-stone-50 px-6 text-center">
-        <svg className="h-16 w-16 text-stone-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
-        </svg>
-        <h1 className="mt-6 text-xl font-semibold tracking-tight text-stone-900">
-          Welcome to SkillsLab
-        </h1>
-        <p className="mt-2 max-w-sm text-sm leading-relaxed text-stone-500">
-          No content package has been loaded yet. Import a content package to get started.
+      <main className="safe-top safe-bottom flex min-h-screen flex-col items-center justify-center bg-canvas px-6 text-center">
+        <BrandMark className="h-20 w-20 drop-shadow-md" />
+        <h1 className="mt-8 text-[2rem] font-bold leading-tight tracking-[-0.025em]">Welcome to SkillsLab</h1>
+        <p className="mt-3 max-w-md text-[1.0625rem] leading-relaxed text-ink-2 text-pretty">
+          Clinical skills videos, storyboards and guides, available offline. Install a content package to get
+          started.
         </p>
-        <button
-          onClick={() => navigate("/update")}
-          className="mt-6 rounded-lg bg-teal-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-teal-700"
-        >
-          Import content
-        </button>
-      </div>
+        <Button size="lg" className="mt-8" icon={<DownloadIcon className="h-5 w-5" />} onClick={() => navigate("/update")}>
+          Get content
+        </Button>
+        <p className="mt-4 max-w-xs text-[0.8125rem] leading-relaxed text-ink-3">
+          Download it from your CMS server, or import a package copied onto this iPad.
+        </p>
+      </main>
     );
   }
 
