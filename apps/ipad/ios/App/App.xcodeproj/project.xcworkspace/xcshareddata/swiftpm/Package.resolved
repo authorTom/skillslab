@@ -20,6 +20,15 @@
       }
     },
     {
+      "identity" : "ion-ios-filetransfer",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ionic-team/ion-ios-filetransfer.git",
+      "state" : {
+        "revision" : "3694f729844bf65134203cfda03b07ccca8977a9",
+        "version" : "1.0.3"
+      }
+    },
+    {
       "identity" : "sqlcipher.swift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/sqlcipher/SQLCipher.swift.git",

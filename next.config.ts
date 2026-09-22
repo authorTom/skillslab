@@ -5,9 +5,9 @@ const nextConfig: NextConfig = {
   output: "standalone",
   experimental: {
     serverActions: {
-      // Uploads (PDFs, storyboard image batches) go through server actions,
-      // so the default 1 MB body limit is far too small.
-      bodySizeLimit: "50mb",
+      // Uploads (PDFs, storyboard image batches, MP4 videos) go through
+      // server actions, so the default 1 MB body limit is far too small.
+      bodySizeLimit: "500mb",
     },
   },
   async headers() {

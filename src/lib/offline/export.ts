@@ -291,8 +291,9 @@ function buildCatalogue(
 
     const mediaId = parseMediaRef(r.content);
     const asset = mediaId ? assetPaths.get(mediaId) ?? null : null;
-    const type = r.type === "local_video" ? "video" : r.type;
-    insertResource.run(r.id, r.skill_id, type, r.title, "", asset, 0, r.position);
+    // Uploaded videos keep their own type: the iPad app reads "video" as a
+    // Vimeo link that needs a connection, and "local_video" as a bundled file.
+    insertResource.run(r.id, r.skill_id, r.type, r.title, "", asset, 0, r.position);
   }
 
   const insertMedia = cat.prepare(

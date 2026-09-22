@@ -7,6 +7,8 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import { getDb, insertMediaFile, probeStoredFile, UPLOADS_DIR } from "./db";
 import { listResources, type Resource, type ResourceType } from "./data";
 import { mediaUrl, parseMediaRef } from "./media-refs";
@@ -461,7 +463,12 @@ export async function replaceMediaFile(
 /** Writes an upload under a fresh, collision-proof name. Returns that name. */
 async function storeUpload(file: File, ext: string): Promise<string> {
   const storageName = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}${ext}`;
-  await fs.promises.writeFile(storagePath(storageName), Buffer.from(await file.arrayBuffer()));
+  // Stream to disk rather than copying the whole file into a Buffer first:
+  // videos can run to hundreds of megabytes.
+  await pipeline(
+    Readable.fromWeb(file.stream() as import("stream/web").ReadableStream),
+    fs.createWriteStream(storagePath(storageName))
+  );
   return storageName;
 }
 

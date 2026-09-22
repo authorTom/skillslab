@@ -1,6 +1,8 @@
+import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
+import { FileTransfer } from "@capacitor/file-transfer";
 import { Network } from "@capacitor/network";
-import { assetFileExists, CONTENT_DIR } from "./assets";
+import { assetFileExists, ensureDir, CONTENT_DIR } from "./assets";
 import {
   validateManifest,
   cleanStaging,
@@ -126,8 +128,17 @@ export async function downloadAndActivate(
     const file = filesToDownload[i];
     const url = `${baseUrl}?file=${encodeURIComponent(file.remotePath)}`;
 
+    const doneBefore = bytesDownloaded;
     try {
-      await downloadToStaging(url, file.stagingPath);
+      await downloadToStaging(url, file.stagingPath, file.bytes, (fileBytes) =>
+        onProgress({
+          phase: "downloading",
+          filesTotal: filesToDownload.length,
+          filesDone: i,
+          bytesTotal: totalBytes,
+          bytesDownloaded: doneBefore + Math.min(fileBytes, file.bytes),
+        })
+      );
     } catch (err) {
       await cleanStaging();
       return {
@@ -172,7 +183,43 @@ export async function downloadAndActivate(
   return { ok: true, manifest };
 }
 
-async function downloadToStaging(url: string, stagingPath: string): Promise<void> {
+async function downloadToStaging(
+  url: string,
+  stagingPath: string,
+  expectedBytes: number,
+  onBytes: (bytes: number) => void
+): Promise<void> {
+  const path = `staging/${stagingPath}`;
+
+  if (!Capacitor.isNativePlatform()) {
+    await downloadViaFetch(url, path);
+    return;
+  }
+
+  // Native download straight to disk. Going through fetch() would hold the
+  // whole file in webview memory (as a blob and again as base64), which
+  // large videos cannot afford.
+  const parent = path.slice(0, path.lastIndexOf("/"));
+  await ensureDir(parent, Directory.Documents);
+  const { uri } = await Filesystem.getUri({ path, directory: Directory.Documents });
+
+  const listener = await FileTransfer.addListener("progress", (status) => {
+    if (status.url === url) onBytes(status.bytes);
+  });
+  try {
+    await FileTransfer.downloadFile({ url, path: uri, progress: true });
+  } finally {
+    await listener.remove();
+  }
+
+  const { size } = await Filesystem.stat({ path, directory: Directory.Documents });
+  if (size !== expectedBytes) {
+    throw new Error(`expected ${expectedBytes} bytes, received ${size}`);
+  }
+}
+
+/** Browser fallback for development with `vite`, where there is no native transfer. */
+async function downloadViaFetch(url: string, path: string): Promise<void> {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
@@ -191,7 +238,7 @@ async function downloadToStaging(url: string, stagingPath: string): Promise<void
   });
 
   await Filesystem.writeFile({
-    path: `staging/${stagingPath}`,
+    path,
     directory: Directory.Documents,
     data: base64,
     recursive: true,
