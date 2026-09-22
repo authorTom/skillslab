@@ -11,6 +11,8 @@ export const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
 
 /** Bumped when a one-way schema migration has to run exactly once. */
 const SCHEMA_VERSION = 2;
+/** The version migrateToMediaLibrary brings a database to. */
+const MEDIA_LIBRARY_VERSION = 1;
 
 declare global {
   var __clinicalSkillsDb: Database.Database | undefined;
@@ -291,7 +293,10 @@ function dropColumn(db: Database.Database, table: string, column: string) {
  * One-way, and guarded by the schema version so it runs exactly once.
  */
 function migrateToMediaLibrary(db: Database.Database) {
-  if (Number(db.pragma("user_version", { simple: true })) >= SCHEMA_VERSION) return;
+  // Pinned to its own version, not SCHEMA_VERSION: when that moved on to 2,
+  // this re-ran on every version-1 database and stamped it 2, so the video
+  // migration after it never ran.
+  if (Number(db.pragma("user_version", { simple: true })) >= MEDIA_LIBRARY_VERSION) return;
 
   const hasLegacyThumbnail = columnsOf(db, "skills").includes("thumbnail");
   const byPath = new Map<string, number>();
@@ -342,7 +347,7 @@ function migrateToMediaLibrary(db: Database.Database) {
     adoptLooseUploads(db, byPath);
   })();
 
-  db.pragma(`user_version = ${SCHEMA_VERSION}`);
+  db.pragma(`user_version = ${MEDIA_LIBRARY_VERSION}`);
 }
 
 /** The `<name>` of a legacy `/files/<name>` path, or null if it isn't one. */
@@ -490,63 +495,83 @@ function uniqueSlugFor(
 /* Migration: widen media.kind CHECK to accept 'video'                */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Widens media.kind to accept 'video' and resources.type to accept
+ * 'local_video'. SQLite can only change a CHECK constraint by rebuilding the
+ * table, so this follows its documented procedure: foreign keys off, rebuild
+ * in a transaction, check the keys, foreign keys back on. Dropping `media`
+ * with foreign keys on would null every course thumbnail and delete every
+ * tag link pointing at it.
+ *
+ * It looks at the tables rather than trusting user_version, because an
+ * earlier bug stamped databases as version 2 without running it.
+ */
 function migrateMediaVideoKind(db: Database.Database) {
-  const version = Number(db.pragma("user_version", { simple: true }));
-  if (version >= SCHEMA_VERSION) return;
-  if (version < 1) return; // Fresh DB or pre-library — handled by CREATE TABLE above.
+  const needsMedia = !tableSql(db, "media").includes("'video'");
+  const needsResources = !tableSql(db, "resources").includes("'local_video'");
 
-  const tableSql = (
-    db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'media'").get() as
-      | { sql: string }
-      | undefined
-  )?.sql;
-  if (!tableSql || tableSql.includes("'video'")) {
+  if (needsMedia || needsResources) {
+    db.pragma("foreign_keys = OFF");
+    try {
+      db.transaction(() => {
+        if (needsMedia) {
+          db.exec(`
+            CREATE TABLE media_v2 (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              folder_id INTEGER REFERENCES media_folders(id) ON DELETE SET NULL,
+              storage_name TEXT NOT NULL UNIQUE,
+              filename TEXT NOT NULL,
+              title TEXT NOT NULL DEFAULT '',
+              alt TEXT NOT NULL DEFAULT '',
+              kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf', 'video')),
+              mime TEXT NOT NULL,
+              bytes INTEGER NOT NULL DEFAULT 0,
+              width INTEGER,
+              height INTEGER,
+              created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            INSERT INTO media_v2 (id, folder_id, storage_name, filename, title, alt, kind, mime, bytes, width, height, created_at)
+              SELECT id, folder_id, storage_name, filename, title, alt, kind, mime, bytes, width, height, created_at FROM media;
+            DROP TABLE media;
+            ALTER TABLE media_v2 RENAME TO media;
+          `);
+        }
+        if (needsResources) {
+          db.exec(`
+            CREATE TABLE resources_v2 (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              skill_id INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+              type TEXT NOT NULL CHECK (type IN ('pdf', 'image', 'storyboard', 'video', 'local_video')),
+              title TEXT NOT NULL,
+              content TEXT NOT NULL,
+              position INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT INTO resources_v2 (id, skill_id, type, title, content, position)
+              SELECT id, skill_id, type, title, content, position FROM resources;
+            DROP TABLE resources;
+            ALTER TABLE resources_v2 RENAME TO resources;
+          `);
+        }
+        const broken = db.pragma("foreign_key_check") as unknown[];
+        if (broken.length > 0) {
+          throw new Error(`Media migration left ${broken.length} broken foreign key reference(s).`);
+        }
+      })();
+    } finally {
+      db.pragma("foreign_keys = ON");
+    }
+  }
+
+  if (Number(db.pragma("user_version", { simple: true })) < SCHEMA_VERSION) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
-    return;
   }
+}
 
-  db.exec(`
-    CREATE TABLE media_v2 (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      folder_id INTEGER REFERENCES media_folders(id) ON DELETE SET NULL,
-      storage_name TEXT NOT NULL UNIQUE,
-      filename TEXT NOT NULL,
-      title TEXT NOT NULL DEFAULT '',
-      alt TEXT NOT NULL DEFAULT '',
-      kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf', 'video')),
-      mime TEXT NOT NULL,
-      bytes INTEGER NOT NULL DEFAULT 0,
-      width INTEGER,
-      height INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    INSERT INTO media_v2 SELECT * FROM media;
-    DROP TABLE media;
-    ALTER TABLE media_v2 RENAME TO media;
-  `);
-
-  const resourcesSql = (
-    db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'resources'").get() as
-      | { sql: string }
-      | undefined
-  )?.sql;
-  if (resourcesSql && !resourcesSql.includes("'local_video'")) {
-    db.exec(`
-      CREATE TABLE resources_v2 (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        skill_id INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
-        type TEXT NOT NULL CHECK (type IN ('pdf', 'image', 'storyboard', 'video', 'local_video')),
-        title TEXT NOT NULL,
-        content TEXT NOT NULL,
-        position INTEGER NOT NULL DEFAULT 0
-      );
-      INSERT INTO resources_v2 SELECT * FROM resources;
-      DROP TABLE resources;
-      ALTER TABLE resources_v2 RENAME TO resources;
-    `);
-  }
-
-  db.pragma(`user_version = ${SCHEMA_VERSION}`);
+function tableSql(db: Database.Database, name: string): string {
+  const row = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(name) as { sql: string } | undefined;
+  return row?.sql ?? "";
 }
 
 /* ------------------------------------------------------------------ */
