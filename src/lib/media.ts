@@ -397,8 +397,13 @@ export async function addUpload(
     return { ok: false, error: unsupportedMessage(file.name, allowed) };
   }
 
-  const storageName = await storeUpload(file, ext);
+  // Open the database before writing the file: on a brand-new database the
+  // first open adopts every file already in the uploads directory, and it
+  // would adopt this one too, then the insert below would collide with it.
   const db = getDb();
+  const stored = await storeUpload(file, ext);
+  if (!stored.ok) return stored;
+  const { storageName } = stored;
   const id = insertMediaFile(db, storageName, safeFilename(file.name, ext), options.title ?? "");
   if (options.folderId) {
     db.prepare("UPDATE media SET folder_id = ? WHERE id = ?").run(options.folderId, id);
@@ -434,7 +439,9 @@ export async function replaceMediaFile(
     return { ok: false, error: messages[current.kind] ?? "Unsupported file type." };
   }
 
-  const storageName = await storeUpload(file, ext);
+  const stored = await storeUpload(file, ext);
+  if (!stored.ok) return stored;
+  const { storageName } = stored;
   const probed = probeStoredFile(storageName);
   // The item keeps the name it was given — a replacement is a new version of
   // this file, not a new file. Only the extension follows the upload.
@@ -460,16 +467,43 @@ export async function replaceMediaFile(
   return { ok: true, previous: current };
 }
 
-/** Writes an upload under a fresh, collision-proof name. Returns that name. */
-async function storeUpload(file: File, ext: string): Promise<string> {
+/**
+ * Writes an upload under a fresh, collision-proof name and returns that name.
+ * A disk failure comes back as a message naming the cause, so the admin sees
+ * "permission denied" or "disk full" rather than a request that just fails.
+ */
+async function storeUpload(
+  file: File,
+  ext: string
+): Promise<{ ok: true; storageName: string } | { ok: false; error: string }> {
   const storageName = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}${ext}`;
-  // Stream to disk rather than copying the whole file into a Buffer first:
-  // videos can run to hundreds of megabytes.
-  await pipeline(
-    Readable.fromWeb(file.stream() as import("stream/web").ReadableStream),
-    fs.createWriteStream(storagePath(storageName))
-  );
-  return storageName;
+  const target = storagePath(storageName);
+  try {
+    // getDb() creates the directory too, but an upload can be the first
+    // thing a fresh server does.
+    await fs.promises.mkdir(UPLOADS_DIR, { recursive: true });
+    // Stream to disk rather than copying the whole file into a Buffer first:
+    // videos can run to hundreds of megabytes.
+    await pipeline(
+      Readable.fromWeb(file.stream() as import("stream/web").ReadableStream),
+      fs.createWriteStream(target)
+    );
+    return { ok: true, storageName };
+  } catch (err) {
+    await fs.promises.rm(target, { force: true }).catch(() => {});
+    console.error(`Failed to store upload ${file.name} at ${target}:`, err);
+    return { ok: false, error: `The server could not save ${file.name}: ${diskErrorReason(err)}` };
+  }
+}
+
+function diskErrorReason(err: unknown): string {
+  const code = (err as NodeJS.ErrnoException)?.code;
+  if (code === "EACCES" || code === "EPERM") {
+    return `permission denied writing to ${UPLOADS_DIR}. Check the data volume is writable by the app.`;
+  }
+  if (code === "ENOSPC") return "the server's disk is full.";
+  if (code === "EROFS") return "the data volume is mounted read-only.";
+  return err instanceof Error ? err.message : "unknown error.";
 }
 
 export function updateMedia(
