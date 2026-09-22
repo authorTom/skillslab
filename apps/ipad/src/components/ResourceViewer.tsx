@@ -150,14 +150,19 @@ function PdfPanel({ asset, title }: { asset: string | null; title: string }) {
 function ImagePanel({ asset, alt }: { asset: string | null; alt: string }) {
   const [expanded, setExpanded] = useState(false);
   const src = assetUrl(asset);
-  if (!src) return <MissingPanel />;
 
+  // Must run before the missing-asset return below: React reuses this
+  // component instance when the sidebar moves between two image resources, so
+  // an early return above a hook changes the hook count between renders and
+  // throws "rendered more hooks than during the previous render".
   useEffect(() => {
     if (!expanded) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setExpanded(false);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [expanded]);
+
+  if (!src) return <MissingPanel />;
 
   return (
     <>
