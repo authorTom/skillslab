@@ -70,6 +70,10 @@ export const ExpandIcon = (p: IconProps) => (
   <Svg {...p}><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></Svg>
 );
 
+export const CollapseIcon = (p: IconProps) => (
+  <Svg {...p}><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" /></Svg>
+);
+
 export const ExternalLinkIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M15 3h6v6M10 14 21 3" />

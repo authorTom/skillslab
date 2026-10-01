@@ -1,30 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { validateManifest } from "../src/data/packages";
 import type { ReleaseManifest } from "../src/data/types";
-
-const SUPPORTED_PACKAGE_FORMAT = "skillslab-content";
-const MAX_CONTENT_SCHEMA_VERSION = 1;
-
-function validateManifest(manifest: ReleaseManifest): string[] {
-  const errors: string[] = [];
-  if (manifest.format !== SUPPORTED_PACKAGE_FORMAT) {
-    errors.push(`Unsupported package format: "${manifest.format}".`);
-  }
-  if (manifest.content_schema_version > MAX_CONTENT_SCHEMA_VERSION) {
-    errors.push(
-      `Content schema version ${manifest.content_schema_version} requires a newer app (this app supports up to ${MAX_CONTENT_SCHEMA_VERSION}).`
-    );
-  }
-  if (!manifest.release_id || !manifest.release_version) {
-    errors.push("Manifest is missing release_id or release_version.");
-  }
-  if (!manifest.catalogue?.filename) {
-    errors.push("Manifest is missing catalogue information.");
-  }
-  if (!Array.isArray(manifest.assets)) {
-    errors.push("Manifest is missing assets list.");
-  }
-  return errors;
-}
 
 function makeManifest(overrides: Partial<ReleaseManifest> = {}): ReleaseManifest {
   return {
@@ -83,5 +59,30 @@ describe("validateManifest", () => {
       })
     );
     expect(errors.length).toBe(3);
+  });
+
+  it("rejects a manifest that isn't an object", () => {
+    expect(validateManifest(null as unknown as ReleaseManifest)).toEqual(["Manifest is not a JSON object."]);
+  });
+
+  it("accepts content-addressed asset paths", () => {
+    const sha = "a".repeat(64);
+    const assets = [
+      { media_id: 1, path: `assets/${sha}.mp4`, mime: "video/mp4", bytes: 10, sha256: sha },
+      { media_id: 2, path: `assets/${sha}`, mime: "application/octet-stream", bytes: 10, sha256: sha },
+    ];
+    expect(validateManifest(makeManifest({ assets }))).toEqual([]);
+  });
+
+  it.each([
+    "../Library/CapacitorDatabase/catalogueSQLite.db",
+    `assets/../../${"a".repeat(64)}.pdf`,
+    `assets/${"b".repeat(64)}.pdf`,
+    `assets/sub/${"a".repeat(64)}.pdf`,
+  ])("rejects asset path %s", (path) => {
+    const assets = [{ media_id: 1, path, mime: "application/pdf", bytes: 10, sha256: "a".repeat(64) }];
+    const errors = validateManifest(makeManifest({ assets }));
+    expect(errors.length).toBe(1);
+    expect(errors[0]).toContain("invalid asset path");
   });
 });
