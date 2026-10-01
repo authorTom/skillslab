@@ -1,11 +1,5 @@
 import { describe, it, expect } from "vitest";
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
+import { formatBytes, formatDate } from "../src/data/format";
 
 describe("formatBytes", () => {
   it("formats bytes", () => {
@@ -26,5 +20,15 @@ describe("formatBytes", () => {
 
   it("handles zero", () => {
     expect(formatBytes(0)).toBe("0 B");
+  });
+});
+
+describe("formatDate", () => {
+  it("formats an ISO date in British style", () => {
+    expect(formatDate("2026-09-30T10:20:30.000Z")).toBe("30 September 2026");
+  });
+
+  it("returns text that isn't a date unchanged", () => {
+    expect(formatDate("soon")).toBe("soon");
   });
 });

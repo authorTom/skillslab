@@ -8,6 +8,9 @@ import BrandMark from "@/components/BrandMark";
 import SplitLayout from "@/components/SplitLayout";
 import Button from "@/components/Button";
 import PinPad from "@/components/PinPad";
+import ContentCheck from "@/components/ContentCheck";
+import { canInstallFromFiles } from "@/data/contentPackage";
+import { formatDate } from "@/data/format";
 import { GroupedBody, GroupedSection, InfoList, InfoRow, NavRow, Notice } from "@/components/Grouped";
 import { CheckCircleIcon, LockIcon, RefreshIcon } from "@/components/icons";
 
@@ -85,6 +88,7 @@ export default function SettingsPage({ back, navigate }: SettingsPageProps) {
           ) : (
             <p className="px-4 py-4 text-[0.9375rem] text-ink-2">No content loaded.</p>
           )}
+          {info && canInstallFromFiles() && <ContentCheck onRepair={() => navigate("/update")} />}
         </GroupedSection>
 
         <GroupedSection title="Content updates">
@@ -244,16 +248,4 @@ function AdminLockSection() {
       </GroupedBody>
     </GroupedSection>
   );
-}
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-  } catch {
-    return iso;
-  }
 }

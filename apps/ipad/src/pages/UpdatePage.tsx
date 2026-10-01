@@ -3,19 +3,24 @@ import Header from "@/components/Header";
 import PageTitle from "@/components/PageTitle";
 import SplitLayout from "@/components/SplitLayout";
 import Button from "@/components/Button";
+import FileInstallSection from "@/components/FileInstallSection";
+import ProgressBar from "@/components/ProgressBar";
 import { GroupedBody, GroupedSection, Notice } from "@/components/Grouped";
 import {
   AlertIcon,
   CheckCircleIcon,
   CheckIcon,
   DownloadIcon,
-  FolderIcon,
   PackageIcon,
   RefreshIcon,
   RollbackIcon,
   ShieldIcon,
 } from "@/components/icons";
 import { useUpdater, type UpdateState } from "@/hooks/useUpdater";
+import { useFileInstall } from "@/hooks/useFileInstall";
+import { canInstallFromFiles } from "@/data/contentPackage";
+import { formatBytes } from "@/data/format";
+import type { UpdateProgress } from "@/data/updater";
 import { getServerUrl, setServerUrl } from "@/data/settings";
 import { getPackageState } from "@/data/packages";
 import { getPublicKey, setPublicKey } from "@/data/signature";
@@ -28,26 +33,29 @@ interface UpdatePageProps {
 
 /** Which section started the current operation, so its result is shown
  *  next to the button the user pressed rather than somewhere off screen. */
-type Origin = "online" | "import" | "rollback";
+type Origin = "online" | "rollback";
 
 // 16px+ text stops iOS zooming the page when a field is focused.
 const INPUT =
   "h-11 min-w-0 flex-1 rounded-xl bg-surface-2 px-3.5 text-base text-ink ring-1 ring-inset ring-transparent outline-none transition placeholder:text-ink-3 focus:bg-surface focus:ring-2 focus:ring-accent";
 
 export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) {
-  const { state, check, download, scanImports, importDir, rollback, reset } =
-    useUpdater(onContentChanged);
+  const { state, check, download, rollback, reset } = useUpdater(onContentChanged);
+  const files = useFileInstall(onContentChanged);
   const [url, setUrl] = useState(getServerUrl);
   const [savedUrl, setSavedUrl] = useState(getServerUrl);
   const [canRollback, setCanRollback] = useState(false);
+  const [installedVersion, setInstalledVersion] = useState<string | null>(null);
   const [origin, setOrigin] = useState<Origin | null>(null);
-  const [importingDir, setImportingDir] = useState<string | null>(null);
   const [confirmingRollback, setConfirmingRollback] = useState(false);
   const urlId = useId();
 
   useEffect(() => {
-    getPackageState().then((s) => setCanRollback(s.previous !== null));
-  }, [state.status]);
+    getPackageState().then((s) => {
+      setCanRollback(s.previous !== null);
+      setInstalledVersion(s.current?.version ?? null);
+    });
+  }, [state.status, files.state.step]);
 
   const urlDirty = url.trim() !== savedUrl;
 
@@ -66,18 +74,6 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
     check();
   }
 
-  function handleScan() {
-    setOrigin("import");
-    scanImports();
-  }
-
-  async function handleImport(dir: string) {
-    setOrigin("import");
-    setImportingDir(dir);
-    await importDir(dir);
-    setImportingDir(null);
-  }
-
   async function handleRollback() {
     setOrigin("rollback");
     await rollback();
@@ -89,13 +85,13 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
     back();
   }
 
-  const busy =
+  const onlineBusy =
     state.status === "checking" ||
     state.status === "downloading" ||
     state.status === "activating" ||
-    state.status === "importing" ||
-    state.status === "scanning" ||
     state.status === "rolling-back";
+  const fileBusy = files.state.step === "opening" || files.state.step === "installing";
+  const busy = onlineBusy || fileBusy;
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -108,6 +104,20 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
           </PageTitle>
         }
       >
+
+        {canInstallFromFiles() && (
+          <FileInstallSection
+            state={files.state}
+            disabled={onlineBusy}
+            installedVersion={installedVersion}
+            onChoose={files.choose}
+            onOpenImportFolder={files.openImportFolder}
+            onInstall={files.install}
+            onCancel={files.cancel}
+            onDismiss={files.dismiss}
+            onDone={back}
+          />
+        )}
 
         <GroupedSection title="Online update">
           <GroupedBody>
@@ -165,62 +175,18 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
                     {formatBytes(state.manifest.total_uncompressed_bytes)}
                   </p>
                 </div>
-                <Button icon={<DownloadIcon className="h-4 w-4" />} onClick={download}>
+                <Button icon={<DownloadIcon className="h-4 w-4" />} disabled={fileBusy} onClick={download}>
                   Download and install
                 </Button>
               </div>
             )}
 
             {(state.status === "downloading" || state.status === "activating") && state.progress && (
-              <ProgressBar progress={state.progress} activating={state.status === "activating"} />
+              <DownloadProgress progress={state.progress} activating={state.status === "activating"} />
             )}
 
             {origin === "online" && <Outcome state={state} failedTitle="Update failed" problemTitle="Couldn’t check for updates" onDone={finish} />}
           </GroupedBody>
-        </GroupedSection>
-
-        <GroupedSection title="Manual import">
-          <GroupedBody>
-            <p className="text-[0.9375rem] leading-relaxed text-ink-2">
-              In the Files app, copy a content package folder into{" "}
-              <span className="font-medium text-ink">On My iPad › SkillsLab › import</span>, then scan for it here.
-            </p>
-            <Button
-              className="mt-4"
-              variant="secondary"
-              icon={<FolderIcon className="h-4 w-4" />}
-              busy={state.status === "scanning"}
-              disabled={busy}
-              onClick={handleScan}
-            >
-              {state.status === "scanning" ? "Scanning…" : "Scan for packages"}
-            </Button>
-
-            {origin === "import" && <Outcome state={state} failedTitle="Import failed" problemTitle="Nothing to import" onDone={finish} />}
-          </GroupedBody>
-
-          {state.importDirs.length > 0 && (
-            <ul className="divide-y divide-line border-t border-line" aria-label="Packages found">
-              {state.importDirs.map((dir) => {
-                const name = dir.replace("import/", "");
-                return (
-                  <li key={dir} className="flex min-h-16 items-center gap-3.5 px-5 py-2.5">
-                    <PackageIcon className="h-5 w-5 shrink-0 text-ink-3" />
-                    <span className="min-w-0 flex-1 truncate text-[0.9375rem] font-medium">{name}</span>
-                    <Button
-                      variant="tinted"
-                      busy={importingDir === dir}
-                      disabled={busy}
-                      onClick={() => handleImport(dir)}
-                      aria-label={`Import ${name}`}
-                    >
-                      {importingDir === dir ? "Importing…" : "Import"}
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
         </GroupedSection>
 
         <SignatureSection />
@@ -338,47 +304,18 @@ function Outcome({
   return notice && <div className="mt-5">{notice}</div>;
 }
 
-function ProgressBar({
-  progress,
-  activating,
-}: {
-  progress: { filesTotal: number; filesDone: number; bytesTotal: number; bytesDownloaded: number };
-  activating: boolean;
-}) {
-  const labelId = useId();
-  const pct = progress.bytesTotal > 0
-    ? Math.round((progress.bytesDownloaded / progress.bytesTotal) * 100)
-    : 0;
-
+function DownloadProgress({ progress, activating }: { progress: UpdateProgress; activating: boolean }) {
+  if (activating) return <ProgressBar label="Installing content…" value={null} />;
   return (
-    <div className="mt-5">
-      <div className="flex items-center justify-between text-[0.9375rem]">
-        <span id={labelId} className="text-ink">
-          {activating
-            ? "Installing content…"
-            : `Downloading file ${progress.filesDone} of ${progress.filesTotal}`}
-        </span>
-        {!activating && <span className="tabular-nums text-ink-2">{pct}%</span>}
-      </div>
-      <div
-        role="progressbar"
-        aria-labelledby={labelId}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={activating ? undefined : pct}
-        className="mt-2 h-2 overflow-hidden rounded-full bg-surface-3"
-      >
-        <div
-          className={`h-full rounded-full bg-accent transition-[width] duration-300 ${activating ? "animate-pulse" : ""}`}
-          style={{ width: `${activating ? 100 : pct}%` }}
-        />
-      </div>
-      {!activating && progress.bytesTotal > 0 && (
-        <p className="mt-1.5 text-[0.8125rem] tabular-nums text-ink-3">
-          {formatBytes(progress.bytesDownloaded)} of {formatBytes(progress.bytesTotal)}
-        </p>
-      )}
-    </div>
+    <ProgressBar
+      label={`Downloading file ${progress.filesDone} of ${progress.filesTotal}`}
+      value={progress.bytesTotal > 0 ? progress.bytesDownloaded / progress.bytesTotal : 0}
+      detail={
+        progress.bytesTotal > 0
+          ? `${formatBytes(progress.bytesDownloaded)} of ${formatBytes(progress.bytesTotal)}`
+          : undefined
+      }
+    />
   );
 }
 
@@ -451,11 +388,4 @@ function SignatureSection() {
       </GroupedBody>
     </GroupedSection>
   );
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
