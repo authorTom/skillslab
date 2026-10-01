@@ -8,7 +8,9 @@ import EmptyState from "./EmptyState";
 import Spinner from "./Spinner";
 import { Eyebrow } from "./PageTitle";
 import ResourceIcon, { resourceTypeLabel } from "./ResourceIcon";
+import PracticeMode, { NO_PRACTICE, type PracticeProgress } from "./PracticeMode";
 import {
+  ChecklistIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CloseIcon,
@@ -46,6 +48,9 @@ const PdfViewer = lazy(() => import("./PdfViewer"));
 export default function ResourceViewer({ resources, intro }: ResourceViewerProps) {
   const [activeId, setActiveId] = useState(resources[0]?.id);
   const active = resources.find((r) => r.id === activeId) ?? resources[0];
+  // Practice progress per storyboard, kept while the skill is open so that
+  // looking at another resource mid-practice doesn't lose the ticks.
+  const [practice, setPractice] = useState<Record<number, PracticeProgress>>({});
   const tabs = useRef(new Map<number, HTMLButtonElement>());
   const baseId = useId();
   const tabId = (id: number) => `${baseId}-tab-${id}`;
@@ -150,7 +155,11 @@ export default function ResourceViewer({ resources, intro }: ResourceViewerProps
         {active ? (
           <div role="tabpanel" id={panelId} aria-labelledby={tabId(active.id)}>
             <div key={active.id} className="animate-fade-in">
-              <ResourcePanel resource={active} />
+              <ResourcePanel
+                resource={active}
+                practice={practice[active.id] ?? NO_PRACTICE}
+                onPractice={(progress) => setPractice((p) => ({ ...p, [active.id]: progress }))}
+              />
             </div>
           </div>
         ) : (
@@ -163,7 +172,15 @@ export default function ResourceViewer({ resources, intro }: ResourceViewerProps
   );
 }
 
-function ResourcePanel({ resource }: { resource: Resource }) {
+function ResourcePanel({
+  resource,
+  practice,
+  onPractice,
+}: {
+  resource: Resource;
+  practice: PracticeProgress;
+  onPractice: (progress: PracticeProgress) => void;
+}) {
   switch (resource.type) {
     case "video":
       // Releases built before uploaded videos kept their own type exported
@@ -179,7 +196,7 @@ function ResourcePanel({ resource }: { resource: Resource }) {
     case "image":
       return <ImagePanel resource={resource} />;
     case "storyboard":
-      return <StoryboardPanel resource={resource} />;
+      return <StoryboardPanel resource={resource} practice={practice} onPractice={onPractice} />;
     default:
       return (
         <EmptyState outlined icon={<DocumentIcon className="h-7 w-7" />} title="Can’t open this resource">
@@ -394,8 +411,17 @@ function Lightbox({ src, alt, onClose }: { src: string; alt: string; onClose: ()
   );
 }
 
-function StoryboardPanel({ resource }: { resource: Resource }) {
+function StoryboardPanel({
+  resource,
+  practice,
+  onPractice,
+}: {
+  resource: Resource;
+  practice: PracticeProgress;
+  onPractice: (progress: PracticeProgress) => void;
+}) {
   const [frames, setFrames] = useState<ResolvedFrame[]>([]);
+  const [practising, setPractising] = useState(false);
   const [index, setIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const swipeStart = useRef<number | null>(null);
@@ -460,6 +486,8 @@ function StoryboardPanel({ resource }: { resource: Resource }) {
       aria-roledescription="carousel"
       aria-label={resource.title}
       onKeyDown={(e) => {
+        // React bubbles events out of the practice portal; ignore those.
+        if (!e.currentTarget.contains(e.target as Node)) return;
         if (e.key === "ArrowLeft") go(index - 1);
         else if (e.key === "ArrowRight") go(index + 1);
       }}
@@ -549,6 +577,35 @@ function StoryboardPanel({ resource }: { resource: Resource }) {
           </StepButton>
         </div>
       </div>
+
+      <div className="mt-8 flex flex-wrap items-center gap-4 rounded-[1.25rem] bg-surface p-4 pl-5 shadow-card ring-1 ring-line">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-ink">
+          <ChecklistIcon className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[0.9375rem] font-medium text-ink">Practice mode</p>
+          <p className="text-[0.875rem] text-ink-2">
+            {practice.finishedAt !== null
+              ? `All ${frames.length} steps done`
+              : practice.startedAt !== null
+                ? `${practice.done.length} of ${frames.length} steps done`
+                : "Tick off each step as you perform it, with a timer."}
+          </p>
+        </div>
+        <Button variant="tinted" onClick={() => setPractising(true)}>
+          {practice.startedAt !== null && practice.finishedAt === null ? "Resume" : "Practise"}
+        </Button>
+      </div>
+
+      {practising && (
+        <PracticeMode
+          title={resource.title}
+          steps={frames}
+          progress={practice}
+          onChange={onPractice}
+          onClose={() => setPractising(false)}
+        />
+      )}
     </section>
   );
 }

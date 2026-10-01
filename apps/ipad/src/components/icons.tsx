@@ -146,3 +146,22 @@ export const WifiOffIcon = (p: IconProps) => (
 export const InfoIcon = (p: IconProps) => (
   <Svg {...p}><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></Svg>
 );
+
+export const LockIcon = (p: IconProps) => (
+  <Svg {...p}><rect width="18" height="11" x="3" y="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></Svg>
+);
+
+export const ChecklistIcon = (p: IconProps) => (
+  <Svg {...p}><path d="m3 17 2 2 4-4M3 7l2 2 4-4M13 6h8M13 12h8M13 18h8" /></Svg>
+);
+
+export const TimerIcon = (p: IconProps) => (
+  <Svg {...p}><path d="M10 2h4M12 14l3-3" /><circle cx="12" cy="14" r="8" /></Svg>
+);
+
+export const BackspaceIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z" />
+    <path d="m12 9 6 6M18 9l-6 6" />
+  </Svg>
+);
