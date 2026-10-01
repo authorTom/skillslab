@@ -147,6 +147,10 @@ final class PackageReaderTests: XCTestCase {
         XCTAssertEqual(problems.map(\.path), ["catalogue.sqlite", Fixtures.assetPath, "assets/gone.jpg"])
         XCTAssertEqual(problems.map(\.problem), [.wrongSize, .damaged, .missing])
 
+        // Without trusted sizes, the hash still catches the short file.
+        let hashOnly = try PackageInstaller.verify(files: specs, in: content, checkHashes: true, checkSizes: false)
+        XCTAssertEqual(hashOnly.map(\.problem), [.damaged, .damaged])
+
         // A size-only check is quick and doesn't notice the flipped byte.
         let quick = try PackageInstaller.verify(files: specs, in: content, checkHashes: false)
         XCTAssertEqual(quick.map(\.problem), [.wrongSize])
