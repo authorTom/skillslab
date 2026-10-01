@@ -85,6 +85,10 @@ export async function getMedia(id: number): Promise<MediaItem | null> {
   return rows[0] ?? null;
 }
 
+export async function listMedia(): Promise<MediaItem[]> {
+  return query("SELECT * FROM media ORDER BY id");
+}
+
 export async function searchSkills(term: string): Promise<Skill[]> {
   // Match % and _ literally, so a search for "50%" isn't a wildcard.
   const like = `%${term.replace(/[\\%_]/g, "\\$&")}%`;

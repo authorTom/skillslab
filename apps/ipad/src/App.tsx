@@ -8,6 +8,7 @@ import SettingsPage from "@/pages/SettingsPage";
 import UpdatePage from "@/pages/UpdatePage";
 import AdminGate from "@/pages/AdminGate";
 import { isPinSet } from "@/data/adminLock";
+import { canInstallFromFiles, ContentPackage } from "@/data/contentPackage";
 import BrandMark from "@/components/BrandMark";
 import Button from "@/components/Button";
 import Spinner from "@/components/Spinner";
@@ -47,6 +48,16 @@ export default function App() {
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
+
+  // A package sent by AirDrop or opened from Files goes to Content updates,
+  // which shows it for installing (behind the PIN, if one is set).
+  useEffect(() => {
+    if (!canInstallFromFiles()) return;
+    const handle = ContentPackage.addListener("packageOpened", () => navigate("/update"));
+    return () => {
+      void handle.then((h) => h.remove());
+    };
+  }, [navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,7 +112,7 @@ export default function App() {
           Get content
         </Button>
         <p className="mt-4 max-w-xs text-[0.8125rem] leading-relaxed text-ink-3">
-          Download it from your CMS server, or import a package copied onto this iPad.
+          Download it from your CMS server, or install a package file from a USB drive, AirDrop or Files.
         </p>
       </main>
     );

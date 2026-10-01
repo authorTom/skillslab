@@ -6,6 +6,9 @@ import type { ReleaseManifest } from "./types";
 
 const STAGING_DIR = "staging";
 const STATE_FILE = `${CONTENT_DIR}/state.json`;
+/** The installed release's manifest, for checking its files later. */
+const MANIFEST_FILE = `${CONTENT_DIR}/manifest.json`;
+const PREVIOUS_MANIFEST_FILE = `${CONTENT_DIR}/previous-manifest.json`;
 const CATALOGUE_PLUGIN_PATH = "CapacitorDatabase/catalogueSQLite.db";
 
 const SUPPORTED_PACKAGE_FORMAT = "skillslab-content";
@@ -133,7 +136,32 @@ async function stagedFileSha256(path: string): Promise<string | null> {
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export async function activate(manifest: ReleaseManifest): Promise<void> {
+/** The manifest of the installed release, if it was installed by a version
+ *  of the app that keeps one. */
+export async function readInstalledManifest(): Promise<ReleaseManifest | null> {
+  try {
+    const result = await Filesystem.readFile({
+      path: MANIFEST_FILE,
+      directory: Directory.Documents,
+      encoding: "utf8" as never,
+    });
+    return JSON.parse(result.data as string) as ReleaseManifest;
+  } catch {
+    return null;
+  }
+}
+
+export interface ActivateOptions {
+  /**
+   * Reinstalling the release that is already active, to replace missing or
+   * damaged files. The rollback backup and history are left as they are,
+   * since overwriting them with the same release would lose the real
+   * previous one.
+   */
+  repair?: boolean;
+}
+
+export async function activate(manifest: ReleaseManifest, options: ActivateOptions = {}): Promise<void> {
   const sigResult = await verifySignature(manifest);
   if (!sigResult.valid) {
     throw new Error(sigResult.reason);
@@ -156,7 +184,7 @@ export async function activate(manifest: ReleaseManifest): Promise<void> {
   await closeCatalogue();
 
   // Back up current catalogue for rollback
-  if (state.current) {
+  if (state.current && !options.repair) {
     try {
       await Filesystem.copy({
         from: CATALOGUE_PLUGIN_PATH,
@@ -198,16 +226,33 @@ export async function activate(manifest: ReleaseManifest): Promise<void> {
     }
   }
 
-  // Update state
-  const newState: PackageState = {
-    current: {
-      releaseId: manifest.release_id,
-      version: manifest.release_version,
-      createdAt: manifest.created_at,
-    },
-    previous: state.current,
-  };
-  await savePackageState(newState);
+  if (!options.repair) {
+    await Filesystem.copy({
+      from: MANIFEST_FILE,
+      directory: Directory.Documents,
+      to: PREVIOUS_MANIFEST_FILE,
+      toDirectory: Directory.Documents,
+    }).catch(() => {});
+  }
+  await Filesystem.writeFile({
+    path: MANIFEST_FILE,
+    directory: Directory.Documents,
+    data: JSON.stringify(manifest),
+    encoding: "utf8" as never,
+    recursive: true,
+  });
+
+  if (!options.repair) {
+    const newState: PackageState = {
+      current: {
+        releaseId: manifest.release_id,
+        version: manifest.release_version,
+        createdAt: manifest.created_at,
+      },
+      previous: state.current,
+    };
+    await savePackageState(newState);
+  }
 
   // Clean up staging
   await cleanStaging();
@@ -236,6 +281,15 @@ export async function rollback(): Promise<void> {
   } catch {
     throw new Error("Previous catalogue backup not found.");
   }
+
+  // Its manifest too, if the app kept one; otherwise drop the newer one so
+  // the content check falls back to the catalogue.
+  await Filesystem.copy({
+    from: PREVIOUS_MANIFEST_FILE,
+    directory: Directory.Documents,
+    to: MANIFEST_FILE,
+    toDirectory: Directory.Documents,
+  }).catch(() => Filesystem.deleteFile({ path: MANIFEST_FILE, directory: Directory.Documents }).catch(() => {}));
 
   // Update state (previous becomes current, no further rollback)
   const newState: PackageState = {

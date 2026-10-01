@@ -65,6 +65,11 @@ export default async function ReleasesPage() {
           <h2 className="text-xs font-semibold uppercase tracking-wide text-stone-400">
             Previous releases
           </h2>
+          <p className="mt-1 text-sm text-stone-500">
+            To set up iPads without a network, download a package, copy it to a USB drive or AirDrop
+            it to each iPad, then choose <span className="font-medium">Install from a file</span> in
+            the app&rsquo;s Content updates.
+          </p>
           <div className="mt-3 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
             <ul className="divide-y divide-stone-200">
               {releases.map((r) => (
@@ -84,6 +89,13 @@ export default async function ReleasesPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
+                    <a
+                      href={`/api/offline/releases/${encodeURIComponent(r.id)}/package`}
+                      download
+                      className="rounded-lg border border-stone-200 px-3 py-1.5 font-medium text-stone-700 transition hover:border-teal-300"
+                    >
+                      Download package
+                    </a>
                     {!r.current && (
                       <form action={markCurrentAction}>
                         <input type="hidden" name="id" value={r.id} />

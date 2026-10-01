@@ -10,6 +10,7 @@ import {
   getPackageState,
 } from "./packages";
 import { getServerUrl, getLastEtag, setLastEtag } from "./settings";
+import { canInstallFromFiles, ContentPackage } from "./contentPackage";
 import type { ReleaseManifest } from "./types";
 
 export interface UpdateProgress {
@@ -104,21 +105,24 @@ export async function downloadAndActivate(
 
   await cleanStaging();
 
-  const filesToDownload: { remotePath: string; stagingPath: string; bytes: number }[] = [];
+  const filesToDownload: { remotePath: string; stagingPath: string; bytes: number; sha256: string }[] = [];
 
   filesToDownload.push({
     remotePath: "catalogue.sqlite",
     stagingPath: "catalogue.sqlite",
     bytes: manifest.catalogue.bytes,
+    sha256: manifest.catalogue.sha256,
   });
 
   for (const asset of manifest.assets) {
+    if (filesToDownload.some((f) => f.stagingPath === asset.path)) continue;
     const alreadyActive = await assetFileExists(asset.path);
     if (!alreadyActive) {
       filesToDownload.push({
         remotePath: asset.path,
         stagingPath: asset.path,
         bytes: asset.bytes,
+        sha256: asset.sha256,
       });
     }
   }
@@ -167,10 +171,6 @@ export async function downloadAndActivate(
     });
   }
 
-  // For assets that already existed, copy them to staging so activate() can find them
-  // Actually, activate() copies from staging to content/assets, and existing ones are already there
-  // We only need the staged catalogue to be present
-
   onProgress({
     phase: "activating",
     filesTotal: filesToDownload.length,
@@ -178,6 +178,26 @@ export async function downloadAndActivate(
     bytesTotal: totalBytes,
     bytesDownloaded: totalBytes,
   });
+
+  // Every downloaded file must match the signed manifest's hash, not just
+  // its size. Hashing natively streams from disk, so videos never have to
+  // fit in web view memory.
+  if (canInstallFromFiles()) {
+    try {
+      const { problems } = await ContentPackage.verify({
+        directory: "staging",
+        files: filesToDownload.map((f) => ({ path: f.stagingPath, bytes: f.bytes, sha256: f.sha256 })),
+        checkHashes: true,
+      });
+      if (problems.length > 0) {
+        await cleanStaging();
+        return { ok: false, error: `Downloaded file ${problems[0].path} is damaged. Try the update again.` };
+      }
+    } catch {
+      await cleanStaging();
+      return { ok: false, error: "Couldn’t check the downloaded files." };
+    }
+  }
 
   try {
     await activate(manifest);
@@ -253,64 +273,6 @@ async function downloadViaFetch(url: string, path: string): Promise<void> {
     data: base64,
     recursive: true,
   });
-}
-
-export async function importFromDirectory(dirPath: string): Promise<UpdateResult | UpdateError> {
-  try {
-    const manifestData = await Filesystem.readFile({
-      path: `${dirPath}/manifest.json`,
-      directory: Directory.Documents,
-      encoding: "utf8" as never,
-    });
-    const manifest: ReleaseManifest = JSON.parse(manifestData.data as string);
-
-    const errors = validateManifest(manifest);
-    if (errors.length > 0) {
-      return { ok: false, error: errors.join(" ") };
-    }
-
-    const state = await getPackageState();
-    if (state.current?.releaseId === manifest.release_id) {
-      return { ok: false, error: "This release is already active." };
-    }
-
-    await cleanStaging();
-
-    // Copy catalogue to staging
-    await Filesystem.copy({
-      from: `${dirPath}/catalogue.sqlite`,
-      directory: Directory.Documents,
-      to: "staging/catalogue.sqlite",
-      toDirectory: Directory.Documents,
-    });
-
-    // Copy assets to staging
-    for (const asset of manifest.assets) {
-      const alreadyActive = await assetFileExists(asset.path);
-      if (!alreadyActive) {
-        try {
-          await Filesystem.copy({
-            from: `${dirPath}/${asset.path}`,
-            directory: Directory.Documents,
-            to: `staging/${asset.path}`,
-            toDirectory: Directory.Documents,
-          });
-        } catch {
-          await cleanStaging();
-          return { ok: false, error: `Missing asset: ${asset.path}` };
-        }
-      }
-    }
-
-    await activate(manifest);
-    return { ok: true, manifest };
-  } catch (err) {
-    await cleanStaging();
-    return {
-      ok: false,
-      error: `Import failed: ${err instanceof Error ? err.message : "unknown error"}`,
-    };
-  }
 }
 
 export async function listImportableDirectories(): Promise<string[]> {

@@ -1,0 +1,12 @@
+{
+  "name": "skillslab-content-package",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native iOS support for installing SkillsLab content packages from files: the system file picker, streaming unzip, SHA-256 verification and Open In.",
+  "license": "UNLICENSED",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}

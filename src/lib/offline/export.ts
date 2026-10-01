@@ -5,6 +5,7 @@ import path from "path";
 import { getDb, DATA_DIR, UPLOADS_DIR } from "../db";
 import { parseMediaRef } from "../media-refs";
 import { parseStoryboardFrames } from "../storyboard";
+import { packageIndex } from "./package";
 import {
   CONTENT_SCHEMA_VERSION,
   PACKAGE_FORMAT,
@@ -59,6 +60,13 @@ export async function buildRelease(options: ExportOptions): Promise<ExportResult
 
     const finalDir = path.join(RELEASES_DIR, releaseId);
     fs.renameSync(stagingDir, finalDir);
+    // Checksum the files now, so the first offline package download starts
+    // straight away. The download route rebuilds the index if this fails.
+    try {
+      packageIndex(finalDir, result.manifest);
+    } catch {
+      // Not needed to publish the release
+    }
 
     return {
       ...result,
