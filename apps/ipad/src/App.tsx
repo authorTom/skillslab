@@ -6,12 +6,17 @@ import HomePage from "@/pages/HomePage";
 import SkillPage from "@/pages/SkillPage";
 import SettingsPage from "@/pages/SettingsPage";
 import UpdatePage from "@/pages/UpdatePage";
+import AdminGate from "@/pages/AdminGate";
+import { isPinSet } from "@/data/adminLock";
 import BrandMark from "@/components/BrandMark";
 import Button from "@/components/Button";
 import Spinner from "@/components/Spinner";
 import { DownloadIcon } from "@/components/icons";
 
 type AppState = "loading" | "empty" | "ready";
+
+/** How long the app can be in the background before the admin area relocks. */
+const ADMIN_AWAY_MS = 5 * 60_000;
 
 async function openContent(): Promise<AppState> {
   try {
@@ -26,6 +31,22 @@ export default function App() {
   const [state, setState] = useState<AppState>("loading");
   const [contentKey, setContentKey] = useState(0);
   const { page, params, navigate, back } = useRouter();
+  // Unlocking covers Settings and Content updates together, and lasts until
+  // the user goes back to the library or leaves the app for a while. A short
+  // trip to the Files app to copy in a package keeps it unlocked.
+  const adminPage = page === "settings" || page === "update";
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  if (adminUnlocked && !adminPage) setAdminUnlocked(false);
+
+  useEffect(() => {
+    let hiddenAt = 0;
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") hiddenAt = Date.now();
+      else if (hiddenAt && Date.now() - hiddenAt > ADMIN_AWAY_MS) setAdminUnlocked(false);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +64,10 @@ export default function App() {
     setState("loading");
     setState(await openContent());
   }, []);
+
+  if (adminPage && !adminUnlocked && isPinSet()) {
+    return <AdminGate back={back} onUnlock={() => setAdminUnlocked(true)} />;
+  }
 
   if (page === "update") {
     return <UpdatePage back={back} onContentChanged={handleContentChanged} />;
