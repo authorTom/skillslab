@@ -1,7 +1,7 @@
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { closeCatalogue, openCatalogue } from "./catalogue";
 import { initAssets, ensureDir, CONTENT_DIR, ASSETS_SUBDIR } from "./assets";
-import { verifySignature } from "./signature";
+import { isSignatureEnforced, verifySignature } from "./signature";
 import type { ReleaseManifest } from "./types";
 
 const STAGING_DIR = "staging";
@@ -42,6 +42,9 @@ async function savePackageState(state: PackageState): Promise<void> {
 export function validateManifest(manifest: ReleaseManifest): string[] {
   const errors: string[] = [];
 
+  if (!manifest || typeof manifest !== "object") {
+    return ["Manifest is not a JSON object."];
+  }
   if (manifest.format !== SUPPORTED_PACKAGE_FORMAT) {
     errors.push(`Unsupported package format: "${manifest.format}".`);
   }
@@ -58,6 +61,18 @@ export function validateManifest(manifest: ReleaseManifest): string[] {
   }
   if (!Array.isArray(manifest.assets)) {
     errors.push("Manifest is missing assets list.");
+  } else {
+    // Asset paths become file paths on the iPad, and the signature covers
+    // only each asset's hash, so a path must be the content-addressed name
+    // the CMS gives it: assets/<sha256>[.ext]. That keeps every write inside
+    // the content folder and ties the path to the signed hash.
+    const bad = manifest.assets.find((a) => {
+      const match = /^assets\/([0-9a-f]{64})(\.[^/\\.]*)?$/.exec(a?.path ?? "");
+      return !match || match[1] !== a.sha256;
+    });
+    if (bad) {
+      errors.push(`Manifest has an invalid asset path: "${bad?.path}".`);
+    }
   }
 
   return errors;
@@ -102,10 +117,38 @@ export async function cleanStaging(): Promise<void> {
   }
 }
 
+/** Hex SHA-256 of a file in Documents, or null where Web Crypto is missing. */
+async function stagedFileSha256(path: string): Promise<string | null> {
+  if (!globalThis.crypto?.subtle) return null;
+  const { data } = await Filesystem.readFile({ path, directory: Directory.Documents });
+  let bytes: Uint8Array<ArrayBuffer>;
+  if (typeof data === "string") {
+    const bin = atob(data);
+    bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  } else {
+    bytes = new Uint8Array(await data.arrayBuffer());
+  }
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export async function activate(manifest: ReleaseManifest): Promise<void> {
   const sigResult = await verifySignature(manifest);
   if (!sigResult.valid) {
     throw new Error(sigResult.reason);
+  }
+
+  // The signature vouches for the manifest's hashes, so the catalogue that
+  // is about to replace the live one must match its hash. (Assets are only
+  // size-checked: hashing large videos would mean reading them into memory.)
+  const catalogueHash = await stagedFileSha256(`${STAGING_DIR}/catalogue.sqlite`);
+  if (catalogueHash === null) {
+    if (isSignatureEnforced()) {
+      throw new Error("This device can’t verify the content catalogue.");
+    }
+  } else if (catalogueHash !== manifest.catalogue.sha256) {
+    throw new Error("The content catalogue doesn’t match the package manifest.");
   }
 
   const state = await getPackageState();

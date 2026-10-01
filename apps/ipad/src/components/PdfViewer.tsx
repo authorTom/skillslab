@@ -4,7 +4,7 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import EmptyState from "./EmptyState";
 import Spinner from "./Spinner";
-import { DocumentIcon } from "./icons";
+import { CollapseIcon, DocumentIcon, ExpandIcon } from "./icons";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -41,8 +41,12 @@ export default function PdfViewer({ src, title }: { src: string; title: string }
   const [zoom, setZoom] = useState(1);
   const [viewWidth, setViewWidth] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
+  const [fullScreen, setFullScreen] = useState(false);
   // Scroll position to apply once the layout reflects a new zoom.
   const pendingScroll = useRef<{ left: number; top: number } | null>(null);
+  // Reading position, as a fraction of the content, to restore once the
+  // layout reflects a new view width after entering or leaving full screen.
+  const pendingPosition = useRef<{ x: number; y: number } | null>(null);
   const zoomRef = useRef(zoom);
 
   useEffect(() => {
@@ -90,6 +94,42 @@ export default function PdfViewer({ src, title }: { src: string; title: string }
       pendingScroll.current = null;
     }
   }, [zoom]);
+
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el && pendingPosition.current) {
+      el.scrollLeft = pendingPosition.current.x * el.scrollWidth;
+      el.scrollTop = pendingPosition.current.y * el.scrollHeight;
+      pendingPosition.current = null;
+    }
+  }, [viewWidth]);
+
+  /** Enter or leave full screen, staying on the same part of the document. */
+  const toggleFullScreen = useCallback(() => {
+    const el = scroller.current;
+    if (el && el.scrollHeight > 0) {
+      pendingPosition.current = { x: el.scrollLeft / el.scrollWidth, y: el.scrollTop / el.scrollHeight };
+    }
+    setFullScreen((f) => !f);
+  }, []);
+
+  // Full screen covers the app in place (WKWebView doesn't offer element
+  // full screen), so lock the page behind it, let Escape close it, and keep
+  // keyboard focus on the document.
+  useEffect(() => {
+    if (!fullScreen) return;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    scroller.current?.focus({ preventScroll: true });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") toggleFullScreen();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+    };
+  }, [fullScreen, toggleFullScreen]);
 
   /** Zoom to `next`, keeping the scroller point (x, y) fixed on screen. */
   const zoomAround = useCallback((next: number, x: number, y: number) => {
@@ -232,7 +272,18 @@ export default function PdfViewer({ src, title }: { src: string; title: string }
   }
 
   return (
-    <div className="relative overflow-hidden rounded-[1.5rem] bg-surface-2 shadow-raised ring-1 ring-line">
+    // The same elements in both modes, so going full screen keeps the loaded
+    // document, its zoom and its rendered pages.
+    <div
+      role={fullScreen ? "dialog" : undefined}
+      aria-modal={fullScreen || undefined}
+      aria-label={fullScreen ? title : undefined}
+      className={
+        fullScreen
+          ? "fixed inset-0 z-50 animate-fade-in bg-surface-2 pt-[env(safe-area-inset-top)]"
+          : "relative overflow-hidden rounded-[1.5rem] bg-surface-2 shadow-raised ring-1 ring-line"
+      }
+    >
       <div
         ref={scroller}
         tabIndex={0}
@@ -244,7 +295,9 @@ export default function PdfViewer({ src, title }: { src: string; title: string }
           else if (e.key === "-") zoomFromCentre(zoom / STEP);
           else if (e.key === "0") zoomFromCentre(1);
         }}
-        className="h-[calc(100dvh-20rem)] min-h-[32rem] touch-pan-x touch-pan-y overflow-auto overscroll-contain lg:h-[calc(100dvh-4rem)]"
+        className={`touch-pan-x touch-pan-y overflow-auto overscroll-contain ${
+          fullScreen ? "h-full" : "h-[calc(100dvh-20rem)] min-h-[32rem] lg:h-[calc(100dvh-4rem)]"
+        }`}
       >
         {!ready ? (
           <div className="flex h-full items-center justify-center text-ink-3" role="status">
@@ -275,7 +328,11 @@ export default function PdfViewer({ src, title }: { src: string; title: string }
       </div>
 
       {doc && (
-        <div className="glass absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full !bg-black/75 p-1 font-mono text-[0.8125rem] tabular-nums">
+        <div
+          className={`glass absolute left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full !bg-black/75 p-1 font-mono text-[0.8125rem] tabular-nums ${
+            fullScreen ? "bottom-[calc(env(safe-area-inset-bottom)+1rem)]" : "bottom-4"
+          }`}
+        >
           <ToolbarButton label="Zoom out" disabled={zoom <= MIN_ZOOM} onClick={() => zoomFromCentre(zoom / STEP)}>
             <path d="M5 12h14" />
           </ToolbarButton>
@@ -296,6 +353,15 @@ export default function PdfViewer({ src, title }: { src: string; title: string }
             {currentPage}
             <span className="opacity-60"> / {sizes.length}</span>
           </span>
+          <span aria-hidden="true" className="mx-1 h-5 w-px bg-white/25" />
+          <button
+            type="button"
+            onClick={toggleFullScreen}
+            aria-label={fullScreen ? "Exit full screen" : "Full screen"}
+            className="flex h-11 w-11 items-center justify-center rounded-full transition active:scale-90 active:bg-white/15"
+          >
+            {fullScreen ? <CollapseIcon className="h-5 w-5" /> : <ExpandIcon className="h-5 w-5" />}
+          </button>
         </div>
       )}
     </div>

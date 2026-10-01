@@ -6,7 +6,11 @@ let db: SQLiteDBConnection | null = null;
 
 const CATALOGUE_DB = "catalogue";
 
-export async function openCatalogue(dbPath?: string): Promise<boolean> {
+export async function openCatalogue(): Promise<boolean> {
+  // activate() and rollback() reopen the catalogue, then the app opens it
+  // again to reload. The plugin refuses a second connection to the same
+  // database, which would leave the app showing no content until relaunched.
+  if (db) return true;
   try {
     const exists = await sqlite.isDatabase(CATALOGUE_DB);
     if (!exists.result) return false;
@@ -82,11 +86,12 @@ export async function getMedia(id: number): Promise<MediaItem | null> {
 }
 
 export async function searchSkills(term: string): Promise<Skill[]> {
-  const like = `%${term}%`;
+  // Match % and _ literally, so a search for "50%" isn't a wildcard.
+  const like = `%${term.replace(/[\\%_]/g, "\\$&")}%`;
   return query(
     `SELECT s.* FROM skills s
      LEFT JOIN categories c ON c.id = s.category_id
-     WHERE s.title LIKE ? OR s.description LIKE ? OR c.name LIKE ?
+     WHERE s.title LIKE ? ESCAPE '\\' OR s.description LIKE ? ESCAPE '\\' OR c.name LIKE ? ESCAPE '\\'
      ORDER BY s.title COLLATE NOCASE`,
     [like, like, like]
   );

@@ -2,7 +2,7 @@ import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { FileTransfer } from "@capacitor/file-transfer";
 import { Network } from "@capacitor/network";
-import { assetFileExists, ensureDir, CONTENT_DIR } from "./assets";
+import { assetFileExists, ensureDir } from "./assets";
 import {
   validateManifest,
   cleanStaging,
@@ -69,7 +69,14 @@ export async function checkForUpdate(): Promise<
     return { available: false, reason: `Server returned ${response.status}.` };
   }
 
-  const manifest: ReleaseManifest = await response.json();
+  // A proxy or captive portal can answer 200 with HTML; without this the
+  // rejection would leave the update screen stuck on "Checking…".
+  let manifest: ReleaseManifest;
+  try {
+    manifest = await response.json();
+  } catch {
+    return { available: false, reason: "The server sent an invalid response." };
+  }
   const errors = validateManifest(manifest);
   if (errors.length > 0) {
     return { available: false, reason: errors.join(" ") };
