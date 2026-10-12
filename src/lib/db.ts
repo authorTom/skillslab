@@ -13,6 +13,8 @@ export const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
 const SCHEMA_VERSION = 2;
 /** The version migrateToMediaLibrary brings a database to. */
 const MEDIA_LIBRARY_VERSION = 1;
+/** The app_meta key tracking whether a new installation has its demo courses. */
+const DEMO_CATALOGUE = "demo_catalogue";
 
 declare global {
   var __clinicalSkillsDb: Database.Database | undefined;
@@ -23,10 +25,42 @@ export function getDb(): Database.Database {
 
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   const db = new Database(path.join(DATA_DIR, "app.db"));
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
+  try {
+    db.pragma("journal_mode = WAL");
+    db.pragma("foreign_keys = ON");
 
-  db.exec(`
+    createSchema(db);
+    migrate(db);
+    migrateToMediaLibrary(db);
+    migrateMediaVideoKind(db);
+    seedDemoCatalogue(db);
+  } catch (error) {
+    // Leave nothing cached, so the next request starts over cleanly.
+    db.close();
+    throw error;
+  }
+  globalThis.__clinicalSkillsDb = db;
+  return db;
+}
+
+/**
+ * Creates whatever tables are missing. A database with no tables at all is a
+ * new installation, which is noted as owed the demo catalogue in the same
+ * transaction — so the note can't outlive a failed setup or be missed by one
+ * that is interrupted. IMMEDIATE, so two processes starting on a new database
+ * at once take turns and only the first sees it empty.
+ */
+function createSchema(db: Database.Database) {
+  db.transaction(() => {
+    const isNew = !db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table'").get();
+    db.exec(SCHEMA);
+    if (isNew) {
+      db.prepare("INSERT INTO app_meta (key, value) VALUES (?, 'pending')").run(DEMO_CATALOGUE);
+    }
+  }).immediate();
+}
+
+const SCHEMA = `
     -- The media library. Every uploaded file is a row here, and courses point
     -- at it by id, so one file can serve any number of courses.
     --
@@ -120,15 +154,16 @@ export function getDb(): Database.Database {
       payload TEXT NOT NULL,
       deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
-  `);
 
-  migrate(db);
-  migrateToMediaLibrary(db);
-  migrateMediaVideoKind(db);
-  seedIfEmpty(db);
-  globalThis.__clinicalSkillsDb = db;
-  return db;
-}
+    -- Facts about the installation itself. 'demo_catalogue' is 'pending' from
+    -- the moment a new database is created until the demo courses are in, then
+    -- 'seeded'. Databases from before it existed never get the row, so they
+    -- are never seeded — however empty they are.
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+`;
 
 /* ------------------------------------------------------------------ */
 /* Media rows                                                          */
@@ -579,12 +614,39 @@ function tableSql(db: Database.Database, name: string): string {
 /* is explorable on first run. All replaceable via the admin section. */
 /* ------------------------------------------------------------------ */
 
-function seedIfEmpty(db: Database.Database) {
-  const count = db.prepare("SELECT COUNT(*) AS n FROM skills").get() as { n: number };
-  if (count.n > 0) return;
+/**
+ * Seeds the demo courses into a new installation, once. Only the app_meta note
+ * left by createSchema decides that — never how many courses there are, since
+ * an admin may have deleted them all and kept the library, the taxonomy and
+ * the bin.
+ *
+ * All of it is one IMMEDIATE transaction, so a failure leaves no rows behind
+ * and the note still 'pending' for the next start to try again. Files written
+ * on the way are removed if it fails; anything already on disk is left alone.
+ */
+function seedDemoCatalogue(db: Database.Database) {
+  const written: string[] = [];
+  try {
+    db.transaction(() => {
+      const note = db.prepare("SELECT value FROM app_meta WHERE key = ?").get(DEMO_CATALOGUE) as
+        | { value: string }
+        | undefined;
+      if (note?.value !== "pending") return;
+      seedDemoCourses(db, (name, data, title) => saveSeedFile(db, written, name, data, title));
+      db.prepare("UPDATE app_meta SET value = 'seeded' WHERE key = ?").run(DEMO_CATALOGUE);
+    }).immediate();
+  } catch (error) {
+    for (const file of written) fs.rmSync(file, { force: true });
+    throw error;
+  }
+}
 
-  const storyboardFrames = seedStoryboardFrames(db);
-  const guidePdf = seedPdf(db, "venepuncture-guide.pdf", "Venepuncture: Procedure Guide", [
+/** Writes a seeded file into the library and returns its media id. */
+type SaveSeedFile = (name: string, data: Buffer | string, title: string) => number;
+
+function seedDemoCourses(db: Database.Database, save: SaveSeedFile) {
+  const storyboardFrames = seedStoryboardFrames(save);
+  const guidePdf = seedPdf(save, "venepuncture-guide.pdf", "Venepuncture: Procedure Guide", [
     "This is a sample seeded document to demonstrate the PDF viewer.",
     "Replace it with your own materials via the admin section.",
     "",
@@ -597,7 +659,7 @@ function seedIfEmpty(db: Database.Database) {
     "7. Release the tourniquet, withdraw and apply pressure.",
     "8. Label samples at the bedside and dispose of sharps safely.",
   ]);
-  const blsPdf = seedPdf(db, "bls-algorithm.pdf", "Basic Life Support: Algorithm Summary", [
+  const blsPdf = seedPdf(save, "bls-algorithm.pdf", "Basic Life Support: Algorithm Summary", [
     "Sample seeded document. Replace via the admin section.",
     "",
     "1. Confirm scene safety.",
@@ -607,7 +669,7 @@ function seedIfEmpty(db: Database.Database) {
     "5. Give 30 compressions to 2 ventilations.",
     "6. Attach the AED as soon as it arrives and follow prompts.",
   ]);
-  const vitalsImage = seedVitalsImage(db);
+  const vitalsImage = seedVitalsImage(save);
 
   // A starter taxonomy: two groups, each holding a couple of categories.
   const insertGroup = db.prepare(
@@ -655,7 +717,7 @@ function seedIfEmpty(db: Database.Database) {
       title,
       categoryIds[category] ?? null,
       description,
-      seedThumbnail(db, slug, title, category, initials)
+      seedThumbnail(save, slug, title, category, initials)
     ).lastInsertRowid;
 
   const venepuncture = seed(
@@ -720,7 +782,7 @@ const THUMBNAIL_PALETTES: Record<string, { bg: string; shape: string; accent: st
 };
 
 function seedThumbnail(
-  db: Database.Database,
+  save: SaveSeedFile,
   slug: string,
   title: string,
   category: string,
@@ -734,21 +796,44 @@ function seedThumbnail(
   <circle cx="400" cy="225" r="110" fill="${palette.accent}"/>
   <text x="400" y="252" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="76" font-weight="bold" fill="#ffffff">${initials}</text>
 </svg>`;
-  return saveSeedFile(db, `seed-thumb-${slug}.svg`, svg, `${title} thumbnail`);
+  return save(`seed-thumb-${slug}.svg`, svg, `${title} thumbnail`);
 }
 
-/** Writes a seeded file and records it in the library. Returns its media id. */
+/**
+ * Writes a seeded file and records it in the library. Returns its media id.
+ *
+ * Never overwrites. A name already in the library, or held on disk by a
+ * different file, gets a numbered alternative; the library still shows `name`.
+ * A file with identical bytes — left by a seed that was killed before it could
+ * clean up — is reused. Files this call creates are added to `written`.
+ */
 function saveSeedFile(
   db: Database.Database,
+  written: string[],
   name: string,
   data: Buffer | string,
   title: string
 ): number {
-  fs.writeFileSync(path.join(UPLOADS_DIR, name), data);
-  return insertMediaFile(db, name, name, title);
+  const bytes = Buffer.from(data);
+  const { name: base, ext } = path.parse(name);
+  const inLibrary = db.prepare("SELECT 1 FROM media WHERE storage_name = ?");
+
+  for (let n = 1; ; n++) {
+    const storageName = n === 1 ? name : `${base}-${n}${ext}`;
+    if (inLibrary.get(storageName)) continue;
+    const file = path.join(UPLOADS_DIR, storageName);
+    try {
+      fs.writeFileSync(file, bytes, { flag: "wx" });
+      written.push(file);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      if (!fs.readFileSync(file).equals(bytes)) continue;
+    }
+    return insertMediaFile(db, storageName, name, title);
+  }
 }
 
-function seedStoryboardFrames(db: Database.Database): { media_id: number; caption: string }[] {
+function seedStoryboardFrames(save: SaveSeedFile): { media_id: number; caption: string }[] {
   const steps = [
     ["1", "Prepare", "Confirm identity, gain consent and perform hand hygiene"],
     ["2", "Tourniquet", "Apply the tourniquet and palpate to select a vein"],
@@ -767,13 +852,13 @@ function seedStoryboardFrames(db: Database.Database): { media_id: number; captio
   <text x="64" y="440" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#a8a29e">Sample storyboard frame — replace via the admin section</text>
 </svg>`;
     return {
-      media_id: saveSeedFile(db, `seed-venepuncture-step-${i + 1}.svg`, svg, `Venepuncture step ${i + 1}`),
+      media_id: save(`seed-venepuncture-step-${i + 1}.svg`, svg, `Venepuncture step ${i + 1}`),
       caption,
     };
   });
 }
 
-function seedVitalsImage(db: Database.Database): number {
+function seedVitalsImage(save: SaveSeedFile): number {
   const items = [
     ["Thermometer", "Temperature"],
     ["Watch / monitor", "Pulse & respirations"],
@@ -795,12 +880,12 @@ function seedVitalsImage(db: Database.Database): number {
   ${boxes}
   <text x="60" y="450" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#a8a29e">Sample image — replace via the admin section</text>
 </svg>`;
-  return saveSeedFile(db, "seed-vitals-equipment.svg", svg, "Vital signs equipment");
+  return save("seed-vitals-equipment.svg", svg, "Vital signs equipment");
 }
 
 /** Builds a minimal but valid one-page PDF with the given title and lines. */
 function seedPdf(
-  db: Database.Database,
+  save: SaveSeedFile,
   name: string,
   title: string,
   lines: string[]
@@ -832,5 +917,5 @@ function seedPdf(
   });
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
 
-  return saveSeedFile(db, name, Buffer.from(pdf, "latin1"), title);
+  return save(name, Buffer.from(pdf, "latin1"), title);
 }
