@@ -204,12 +204,15 @@ export function restoreTrashItem(id: number): RestoreResult {
 
 /* ------------------------------- purging ------------------------------ */
 
-/** Permanently removes one bin entry, and its file when it holds one. */
-export function purgeTrashItem(id: number): boolean {
+/**
+ * Permanently removes one bin entry, and its file when it holds one. Returns
+ * the entry's label, or null if it was already gone.
+ */
+export function purgeTrashItem(id: number): string | null {
   const row = getTrashRow(id);
-  if (!row) return false;
+  if (!row) return null;
   purgeRow(row);
-  return true;
+  return row.label;
 }
 
 /** Empties the bin. Returns how many entries were removed. */

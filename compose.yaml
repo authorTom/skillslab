@@ -4,9 +4,15 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # Required — the server will not start without a real password.
-      # Set it in .env beside this file, or pass ADMIN_PASSWORD=... on the command line.
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env or on the command line}
+      # Optional, and only read on the very first start: creates the first
+      # administrator ("admin", or ADMIN_USERNAME) with this password, which
+      # must be changed at first sign-in. Leave it unset to get a one-time
+      # setup code in the log instead (docker compose logs app).
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      # Optional: defaults are 8 hours idle and 12 hours after signing in.
+      SESSION_IDLE_HOURS: ${SESSION_IDLE_HOURS:-}
+      SESSION_MAX_HOURS: ${SESSION_MAX_HOURS:-}
     volumes:
       - clinical-data:/app/data
     restart: unless-stopped

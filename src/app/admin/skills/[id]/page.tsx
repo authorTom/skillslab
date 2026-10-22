@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { categoryOptions, getSkillById, listGroups, listResources } from "@/lib/data";
 import { getMedia } from "@/lib/media";
 import { categoryPath } from "@/lib/taxonomy";
@@ -24,7 +24,7 @@ export default async function EditSkillPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ created?: string; trashed?: string }>;
 }) {
-  await requireAdmin();
+  await requireUser();
   const { id: idParam } = await params;
   const { created, trashed } = await searchParams;
   const id = Number(idParam);

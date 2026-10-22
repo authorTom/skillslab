@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireAdmin } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
+import { requireUser, type CurrentUser } from "@/lib/auth";
 import {
   addTagToMedia,
   addUpload,
@@ -56,7 +57,7 @@ function backToMedia(message: { success: string } | { error: string }): never {
  * each gets its own progress row and no single request has to carry them all.
  */
 export async function uploadMediaAction(formData: FormData): Promise<UploadedMedia> {
-  await requireAdmin();
+  await requireUser();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0 || !file.name) {
     return { ok: false, error: "No file was received." };
@@ -96,7 +97,7 @@ export async function searchMediaAction(filter: {
   tag?: number;
   sort?: MediaSort;
 }): Promise<MediaItem[]> {
-  await requireAdmin();
+  await requireUser();
   return listMedia({ ...(filter as MediaFilter), limit: 200 });
 }
 
@@ -107,7 +108,7 @@ export async function updateMediaAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  await requireAdmin();
+  await requireUser();
   const media = getMedia(id);
   if (!media) return { error: "That file is no longer in the library." };
 
@@ -138,7 +139,7 @@ export async function replaceMediaAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  await requireAdmin();
+  await requireUser();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0 || !file.name) {
     return { error: "Please choose a file to upload." };
@@ -157,7 +158,7 @@ export async function replaceMediaAction(
 }
 
 export async function deleteMediaAction(id: number) {
-  await requireAdmin();
+  const user = await requireUser();
   const media = getMedia(id);
   if (!media) backToMedia({ error: "That file is no longer in the library." });
 
@@ -169,13 +170,14 @@ export async function deleteMediaAction(id: number) {
   }
 
   trashMedia(media);
+  recordAudit(user, "media.delete", { target: media.filename });
   backToMedia({ success: `“${media.filename}” moved to the recycle bin.` });
 }
 
 /* ------------------------------- bulk ----------------------------- */
 
 export async function bulkMediaAction(formData: FormData) {
-  await requireAdmin();
+  const user = await requireUser();
   const ids = formData
     .getAll("selected")
     .map((value) => Number(value))
@@ -184,7 +186,7 @@ export async function bulkMediaAction(formData: FormData) {
 
   switch (text(formData, "bulkAction")) {
     case "delete":
-      return bulkDelete(ids);
+      return bulkDelete(user, ids);
     case "move": {
       const choice = Number(text(formData, "folderId"));
       const folderId = Number.isInteger(choice) && choice > 0 ? getMediaFolder(choice)?.id ?? null : null;
@@ -208,7 +210,7 @@ export async function bulkMediaAction(formData: FormData) {
 }
 
 /** Deletes what it can and says plainly which files are still in use. */
-function bulkDelete(ids: number[]): never {
+function bulkDelete(user: CurrentUser, ids: number[]): never {
   const usage = mediaUsageIndex();
   const blocked: string[] = [];
   let deleted = 0;
@@ -221,6 +223,7 @@ function bulkDelete(ids: number[]): never {
       continue;
     }
     trashMedia(media);
+    recordAudit(user, "media.delete", { target: media.filename });
     deleted++;
   }
 
@@ -240,7 +243,7 @@ function bulkDelete(ids: number[]): never {
 /* ------------------------------ folders --------------------------- */
 
 export async function createFolderAction(formData: FormData) {
-  await requireAdmin();
+  await requireUser();
   const name = text(formData, "name");
   if (!name) backToMedia({ error: "A folder needs a name." });
   createMediaFolder(name);
@@ -248,7 +251,7 @@ export async function createFolderAction(formData: FormData) {
 }
 
 export async function renameFolderAction(id: number, formData: FormData) {
-  await requireAdmin();
+  await requireUser();
   if (!getMediaFolder(id)) backToMedia({ error: "That folder no longer exists." });
   const name = text(formData, "name");
   if (!name) backToMedia({ error: "A folder needs a name." });
@@ -257,7 +260,7 @@ export async function renameFolderAction(id: number, formData: FormData) {
 }
 
 export async function deleteFolderAction(id: number) {
-  await requireAdmin();
+  await requireUser();
   const folder = getMediaFolder(id);
   if (!folder) backToMedia({ error: "That folder no longer exists." });
   deleteMediaFolder(id);

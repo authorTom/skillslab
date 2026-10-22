@@ -158,11 +158,63 @@ const SCHEMA = `
     -- Facts about the installation itself. 'demo_catalogue' is 'pending' from
     -- the moment a new database is created until the demo courses are in, then
     -- 'seeded'. Databases from before it existed never get the row, so they
-    -- are never seeded — however empty they are.
+    -- are never seeded — however empty they are. 'setup_code' holds the hash
+    -- of the one-time code that creates the first administrator, while there
+    -- is no administrator to sign in as.
     CREATE TABLE IF NOT EXISTS app_meta (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    -- The people who manage the catalogue. Learners never sign in. Usernames
+    -- are stored lower-case; times are milliseconds since the epoch.
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('admin', 'editor')),
+      password_hash TEXT NOT NULL,
+      must_change_password INTEGER NOT NULL DEFAULT 0,
+      disabled_at INTEGER,
+      last_login_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+
+    -- Signed-in sessions. Only a hash of the cookie's token is kept, so a copy
+    -- of the database can't be used to sign in.
+    CREATE TABLE IF NOT EXISTS sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash TEXT NOT NULL UNIQUE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      ip TEXT NOT NULL DEFAULT '',
+      user_agent TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
+
+    -- Failed sign-ins, counted per username and per address ('user:…', 'ip:…').
+    CREATE TABLE IF NOT EXISTS login_attempts (
+      key TEXT PRIMARY KEY,
+      failures INTEGER NOT NULL,
+      window_started_at INTEGER NOT NULL,
+      locked_until INTEGER
+    );
+
+    -- Who did what. 'actor' is a copy of the username, so entries still read
+    -- correctly after the account is deleted.
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      at INTEGER NOT NULL,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target TEXT NOT NULL DEFAULT '',
+      detail TEXT NOT NULL DEFAULT '',
+      ip TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS audit_log_at ON audit_log(at);
 `;
 
 /* ------------------------------------------------------------------ */

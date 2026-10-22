@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { categoryOptions, listGroups } from "@/lib/data";
 import { createSkillAction } from "../../actions";
 import SkillForm from "@/components/admin/SkillForm";
@@ -7,7 +7,7 @@ import SkillForm from "@/components/admin/SkillForm";
 export const dynamic = "force-dynamic";
 
 export default async function NewSkillPage() {
-  await requireAdmin();
+  await requireUser();
   const categories = categoryOptions();
   const groups = listGroups();
 

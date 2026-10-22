@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { formatBytes, formatDimensions } from "@/lib/files";
 import { getMedia, listMediaFolders, mediaUsage, type MediaUsage } from "@/lib/media";
 import { MEDIA_KIND_LABELS } from "@/lib/media-types";
@@ -36,7 +36,7 @@ function UsageRow({ usage }: { usage: MediaUsage }) {
 }
 
 export default async function MediaDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireAdmin();
+  await requireUser();
   const { id: idParam } = await params;
   const id = Number(idParam);
   const media = Number.isInteger(id) ? getMedia(id) : undefined;

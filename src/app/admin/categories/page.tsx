@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { listGroupsWithCategories, type CategoryWithCount, type Group } from "@/lib/data";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import { inputClass, primaryButtonClass } from "@/components/admin/formStyles";
@@ -117,7 +117,7 @@ export default async function CategoriesPage({
 }: {
   searchParams: Promise<{ success?: string; error?: string }>;
 }) {
-  await requireAdmin();
+  await requireUser();
   const { success, error } = await searchParams;
   const { groups, ungrouped } = listGroupsWithCategories();
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { countTrash, groupSkills, listSkills, type SkillWithCount } from "@/lib/data";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import { deleteSkillAction, purgeExpiredTrashAction } from "./actions";
@@ -41,8 +41,13 @@ function SkillRow({ skill }: { skill: SkillWithCount }) {
   );
 }
 
-export default async function AdminPage() {
-  await requireAdmin();
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ notice?: string }>;
+}) {
+  const user = await requireUser();
+  const { notice } = await searchParams;
   await purgeExpiredTrashAction();
   const skills = listSkills();
   const sections = groupSkills(skills);
@@ -70,12 +75,14 @@ export default async function AdminPage() {
           >
             Media library
           </Link>
-          <Link
-            href="/admin/releases"
-            className="rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-700 transition hover:border-teal-300"
-          >
-            Offline releases
-          </Link>
+          {user.role === "admin" && (
+            <Link
+              href="/admin/releases"
+              className="rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-700 transition hover:border-teal-300"
+            >
+              Offline releases
+            </Link>
+          )}
           <Link
             href="/admin/trash"
             className="rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-700 transition hover:border-teal-300"
@@ -90,6 +97,12 @@ export default async function AdminPage() {
           </Link>
         </div>
       </div>
+
+      {notice === "admins-only" && (
+        <p className="mt-6 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          That page is for administrators. Ask one if you need something changed there.
+        </p>
+      )}
 
       {skills.length === 0 ? (
         <div className="mt-10 rounded-2xl border border-dashed border-stone-300 p-12 text-center">

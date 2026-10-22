@@ -2,7 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { endSession, requireAdmin, startSession } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
+import {
+  changeOwnPassword,
+  requestInfo,
+  requireRole,
+  requireUser,
+  revokeOtherSessions,
+  signIn,
+  signOut,
+} from "@/lib/auth";
+import { completeSetup } from "@/lib/bootstrap";
 import {
   addResource,
   countSkillsInCategory,
@@ -52,15 +62,66 @@ function revalidateAll() {
 
 /* ----------------------------- auth ------------------------------ */
 
-export async function loginAction(formData: FormData) {
-  const ok = await startSession(text(formData, "password"));
-  if (!ok) redirect("/admin/login?error=1");
-  redirect("/admin");
+/** Passwords are taken as typed: trimming would change them. */
+function password(formData: FormData, key: string): string {
+  const value = formData.get(key);
+  return typeof value === "string" ? value : "";
+}
+
+export async function loginAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const result = await signIn(text(formData, "username"), password(formData, "password"));
+  if (!result.ok) return { error: result.error };
+  redirect(result.mustChangePassword ? "/admin/account/password" : "/admin");
 }
 
 export async function logoutAction() {
-  await endSession();
+  await signOut();
   redirect("/");
+}
+
+export async function setupAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  if (password(formData, "password") !== password(formData, "confirm")) {
+    return { error: "The passwords don’t match." };
+  }
+  const result = await completeSetup(
+    {
+      code: text(formData, "code"),
+      username: text(formData, "username"),
+      name: text(formData, "name"),
+      password: password(formData, "password"),
+    },
+    (await requestInfo()).ip
+  );
+  if (!result.ok) return { error: result.error };
+  const signedIn = await signIn(result.user.username, password(formData, "password"));
+  redirect(signedIn.ok ? "/admin" : "/admin/login");
+}
+
+export async function changePasswordAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const user = await requireUser({ allowPasswordChange: true });
+  const result = await changeOwnPassword(user, {
+    current: password(formData, "current"),
+    next: password(formData, "password"),
+    confirm: password(formData, "confirm"),
+  });
+  if (!result.ok) return { error: result.error };
+  if (user.must_change_password) redirect("/admin");
+  return { success: "Password changed. Your other devices have been signed out." };
+}
+
+export async function signOutOtherSessionsAction() {
+  const user = await requireUser();
+  const count = await revokeOtherSessions(user);
+  redirect(
+    `/admin/account?success=${encodeURIComponent(
+      count === 0
+        ? "You weren’t signed in anywhere else."
+        : `Signed out of ${count} other ${count === 1 ? "session" : "sessions"}.`
+    )}`
+  );
 }
 
 /* ----------------------------- skills ---------------------------- */
@@ -69,7 +130,7 @@ export async function createSkillAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  await requireAdmin();
+  await requireUser();
   const title = text(formData, "title");
   if (!title) return { error: "A title is required." };
 
@@ -90,7 +151,7 @@ export async function updateSkillAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  await requireAdmin();
+  await requireUser();
   const skill = getSkillById(id);
   if (!skill) return { error: "This skill no longer exists." };
   const title = text(formData, "title");
@@ -135,9 +196,12 @@ function chosenCategory(formData: FormData): { categoryId: number | null } | { e
 }
 
 export async function deleteSkillAction(id: number) {
-  await requireAdmin();
+  const user = await requireUser();
   const skill = getSkillById(id);
-  if (skill) trashSkill(skill);
+  if (skill) {
+    trashSkill(skill);
+    recordAudit(user, "skill.delete", { target: skill.title });
+  }
   revalidateAll();
   redirect("/admin");
 }
@@ -152,7 +216,7 @@ function backToCategories(message: { success: string } | { error: string }): nev
 }
 
 export async function createGroupAction(formData: FormData) {
-  await requireAdmin();
+  await requireUser();
   const name = text(formData, "name");
   if (!name) backToCategories({ error: "A group needs a name." });
   createGroup(name, text(formData, "description"));
@@ -160,7 +224,7 @@ export async function createGroupAction(formData: FormData) {
 }
 
 export async function updateGroupAction(id: number, formData: FormData) {
-  await requireAdmin();
+  await requireUser();
   const group = getGroup(id);
   if (!group) backToCategories({ error: "That group no longer exists." });
   const name = text(formData, "name");
@@ -170,7 +234,7 @@ export async function updateGroupAction(id: number, formData: FormData) {
 }
 
 export async function deleteGroupAction(id: number) {
-  await requireAdmin();
+  await requireUser();
   const group = getGroup(id);
   if (!group) backToCategories({ error: "That group no longer exists." });
   deleteGroup(id);
@@ -180,14 +244,14 @@ export async function deleteGroupAction(id: number) {
 }
 
 export async function moveGroupAction(id: number, direction: -1 | 1) {
-  await requireAdmin();
+  await requireUser();
   moveGroup(id, direction);
   revalidateAll();
   redirect("/admin/categories");
 }
 
 export async function createCategoryAction(formData: FormData) {
-  await requireAdmin();
+  await requireUser();
   const name = text(formData, "name");
   if (!name) backToCategories({ error: "A category needs a name." });
   createCategory(name, groupChoice(formData), text(formData, "description"));
@@ -195,7 +259,7 @@ export async function createCategoryAction(formData: FormData) {
 }
 
 export async function updateCategoryAction(id: number, formData: FormData) {
-  await requireAdmin();
+  await requireUser();
   const category = getCategory(id);
   if (!category) backToCategories({ error: "That category no longer exists." });
   const name = text(formData, "name");
@@ -205,7 +269,7 @@ export async function updateCategoryAction(id: number, formData: FormData) {
 }
 
 export async function deleteCategoryAction(id: number) {
-  await requireAdmin();
+  await requireUser();
   const category = getCategory(id);
   if (!category) backToCategories({ error: "That category no longer exists." });
   const affected = countSkillsInCategory(id);
@@ -221,7 +285,7 @@ export async function deleteCategoryAction(id: number) {
 }
 
 export async function moveCategoryAction(id: number, direction: -1 | 1) {
-  await requireAdmin();
+  await requireUser();
   moveCategory(id, direction);
   revalidateAll();
   redirect("/admin/categories");
@@ -240,7 +304,7 @@ export async function addResourceAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  await requireAdmin();
+  await requireUser();
   const skillId = Number(text(formData, "skillId"));
   const type = text(formData, "type") as ResourceType;
   if (!skillId || !["pdf", "image", "storyboard", "video", "local_video"].includes(type)) {
@@ -260,7 +324,7 @@ export async function updateResourceAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  await requireAdmin();
+  await requireUser();
   const resource = getResource(id);
   if (!resource) return { error: "This resource no longer exists." };
 
@@ -348,7 +412,7 @@ function chosenMedia(
 }
 
 export async function deleteResourceAction(id: number) {
-  await requireAdmin();
+  await requireUser();
   const resource = getResource(id);
   if (!resource) return;
   trashResource(resource);
@@ -357,7 +421,7 @@ export async function deleteResourceAction(id: number) {
 }
 
 export async function moveResourceAction(id: number, direction: -1 | 1) {
-  await requireAdmin();
+  await requireUser();
   moveResource(id, direction);
   revalidateAll();
 }
@@ -365,7 +429,7 @@ export async function moveResourceAction(id: number, direction: -1 | 1) {
 /* --------------------------- recycle bin ------------------------- */
 
 export async function restoreTrashAction(id: number) {
-  await requireAdmin();
+  await requireUser();
   const result = restoreTrashItem(id);
   revalidateAll();
   redirect(
@@ -376,19 +440,21 @@ export async function restoreTrashAction(id: number) {
 }
 
 export async function purgeTrashAction(id: number) {
-  await requireAdmin();
+  const user = await requireRole("admin");
   const purged = purgeTrashItem(id);
+  if (purged !== null) recordAudit(user, "trash.purge", { target: purged });
   revalidateAll();
   redirect(
-    purged
+    purged !== null
       ? `/admin/trash?success=${encodeURIComponent("Item deleted permanently and its file removed.")}`
       : "/admin/trash"
   );
 }
 
 export async function emptyTrashAction() {
-  await requireAdmin();
+  const user = await requireRole("admin");
   const count = purgeAllTrash();
+  if (count > 0) recordAudit(user, "trash.empty", { detail: `${count} items` });
   revalidateAll();
   redirect(
     `/admin/trash?success=${encodeURIComponent(
@@ -401,7 +467,7 @@ export async function emptyTrashAction() {
 
 /** Purges anything past its retention window. Called when admin pages load. */
 export async function purgeExpiredTrashAction() {
-  await requireAdmin();
+  await requireUser();
   return purgeExpiredTrash();
 }
 

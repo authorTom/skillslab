@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { listTrash, TRASH_RETENTION_DAYS, type TrashKind } from "@/lib/data";
 import { formatBytes } from "@/lib/files";
 import { trashedBytes } from "@/lib/trash";
@@ -31,7 +31,8 @@ export default async function TrashPage({
 }: {
   searchParams: Promise<{ success?: string; error?: string }>;
 }) {
-  await requireAdmin();
+  const user = await requireUser();
+  const canPurge = user.role === "admin";
   await purgeExpiredTrashAction();
   const { success, error } = await searchParams;
 
@@ -57,7 +58,7 @@ export default async function TrashPage({
             deleting one never removes a file — purging a deleted file is what frees the storage.
           </p>
         </div>
-        {items.length > 0 && (
+        {canPurge && items.length > 0 && (
           <form action={emptyTrashAction}>
             <ConfirmButton
               message={`Permanently delete all ${items.length} item(s) and their files? This cannot be undone.`}
@@ -109,16 +110,18 @@ export default async function TrashPage({
                     Restore
                   </button>
                 </form>
-                <form action={purgeTrashAction.bind(null, row.id)}>
-                  <ConfirmButton
-                    message={`Permanently delete “${row.label}”${
-                      bytes > 0 ? " and its file" : ""
-                    }? This cannot be undone.`}
-                    className="rounded-lg px-3 py-1.5 text-red-600 transition hover:bg-red-50"
-                  >
-                    Delete forever
-                  </ConfirmButton>
-                </form>
+                {canPurge && (
+                  <form action={purgeTrashAction.bind(null, row.id)}>
+                    <ConfirmButton
+                      message={`Permanently delete “${row.label}”${
+                        bytes > 0 ? " and its file" : ""
+                      }? This cannot be undone.`}
+                      className="rounded-lg px-3 py-1.5 text-red-600 transition hover:bg-red-50"
+                    >
+                      Delete forever
+                    </ConfirmButton>
+                  </form>
+                )}
               </div>
             </li>
           ))}

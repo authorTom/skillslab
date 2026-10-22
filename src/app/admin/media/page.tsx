@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { formatBytes } from "@/lib/files";
 import {
   countMedia,
@@ -41,7 +41,7 @@ export default async function MediaLibraryPage({
 }: {
   searchParams: Promise<Search>;
 }) {
-  await requireAdmin();
+  await requireUser();
   await purgeExpiredTrashAction();
   const params = await searchParams;
 
