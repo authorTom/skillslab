@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { getResource, getSkillById } from "@/lib/data";
 import { getMedia, getMediaMap } from "@/lib/media";
 import { parseMediaRef } from "@/lib/media-refs";
@@ -18,7 +18,7 @@ export default async function EditResourcePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireAdmin();
+  await requireUser();
   const { id: idParam } = await params;
   const id = Number(idParam);
   const resource = Number.isInteger(id) ? getResource(id) : undefined;

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "backup": "node scripts/backup.mjs"
+    "backup": "node scripts/backup.mjs",
+    "reset-admin": "node scripts/reset-admin.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",

@@ -37,10 +37,13 @@ LMS integration; it is a well-organised library, not a learning platform.
 - **Resource viewer** — inline PDFs, an image lightbox, step-through storyboards
   with a caption per step, and embedded Vimeo videos (private links with a hash
   are supported).
-- **Admin section** — password-protected course management: add, edit and remove
+- **Admin section** — course management behind individual sign-ins: add, edit and remove
   skills, organise them into groups and categories, upload PDFs and images,
   build storyboards, attach Vimeo videos by pasting the URL, and reorder the
   resources shown for each skill.
+- **Admin accounts** — each person who manages courses has their own login, as
+  an Administrator or an Editor. Administrators create, disable and delete
+  accounts and reset passwords; an audit log records who did what.
 - **Media library** — every upload in one place, shared between courses: folders,
   tags, search, rename, replace, and a picker on every form.
 - **Nothing lost by accident** — resources stay editable after they are added,
@@ -59,15 +62,17 @@ deploy without cloning the repo:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/authorTom/skillslab/main/compose.yaml -o compose.yaml
-ADMIN_PASSWORD=change-me docker compose up -d
+docker compose up -d
+docker compose logs app    # shows the one-time setup code
 ```
 
-Open **<http://localhost:3000>**, then go to **/admin** and sign in with that
-password to replace the seeded example skills with your own.
+Open **<http://localhost:3000/admin>**, enter the setup code from the log, and
+create your administrator account (see [Admin accounts](#admin-accounts)). Then
+replace the seeded example skills with your own.
 
-Rather than passing `ADMIN_PASSWORD` on the command line, drop a `.env` file
-next to `compose.yaml` (copy [`.env.example`](.env.example) and edit it) —
-compose reads it automatically. Keep that `.env` out of version control.
+Settings go in a `.env` file next to `compose.yaml` (copy
+[`.env.example`](.env.example) and edit it) — compose reads it automatically.
+Keep that `.env` out of version control.
 
 `compose.yaml` persists `data/` in a named volume, runs an `init` process, and
 includes a healthcheck. `docker compose pull` fetches new versions.
@@ -77,8 +82,7 @@ standalone output, runs as a non-root user):
 
 ```bash
 docker build -t skillslab .
-docker run -d -p 3000:3000 -e ADMIN_PASSWORD=change-me \
-  -v skillslab-data:/app/data skillslab
+docker run -d -p 3000:3000 -v skillslab-data:/app/data skillslab
 ```
 
 ### From source
@@ -89,7 +93,8 @@ npm run dev
 ```
 
 Open <http://localhost:3000>. The database is created and seeded with example
-skills on first run.
+skills on first run, and the terminal prints a setup code for creating the
+first administrator at <http://localhost:3000/admin>.
 
 For production: `npm run build && npm start`.
 
@@ -97,16 +102,87 @@ For production: `npm run build && npm start`.
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `ADMIN_PASSWORD` | *(required)* | Password for the admin section. The server will not start without it, and rejects known-weak defaults. |
+| `ADMIN_PASSWORD` | *(unset)* | Only read while there are no accounts at all: creates the first administrator with this password, which must be changed at first sign-in. Ignored afterwards. Published defaults like `change-me` are refused. |
+| `ADMIN_USERNAME` | `admin` | Username for the account `ADMIN_PASSWORD` creates. |
+| `SESSION_IDLE_HOURS` | `8` | Sign out after this long without activity. |
+| `SESSION_MAX_HOURS` | `12` | Sign out this long after signing in, however active. |
 
-Set it in `.env.local` for local development, or a `.env` beside `compose.yaml`
-for a container deployment.
+Set them in `.env.local` for local development, or a `.env` beside
+`compose.yaml` for a container deployment.
 
 Uploads through the admin section are limited to 50 MB per submission,
 configured via `experimental.serverActions.bodySizeLimit` in `next.config.ts`.
 
 Everything else — skills, groups, categories, resources, thumbnails — is managed
 in the admin section.
+
+## Admin accounts
+
+Everyone who manages courses signs in to **/admin** with their own username and
+password. Learners never need an account.
+
+### The first administrator
+
+A new installation has no accounts. When the server starts it prints a
+one-time **setup code** to its log (`docker compose logs app`, or the terminal
+running `npm start`). Open **/admin**, enter the code, and choose your name,
+username and password. Only someone who can read the server's log can do this;
+the code stops working once an administrator exists, and a restart replaces it.
+
+Alternatively, set `ADMIN_PASSWORD` before the first start to create an `admin`
+account with it. That account must choose a new password when it first signs in.
+
+**Upgrading from the single shared password?** Nothing to do before upgrading.
+On the first start the existing `ADMIN_PASSWORD` becomes the password of an
+`admin` account: sign in as **admin** with it, and you'll be asked to choose a
+new one. After that `ADMIN_PASSWORD` is ignored — remove it from `.env`.
+
+### Roles
+
+| Role | What they can do |
+| --- | --- |
+| **Administrator** | Everything: courses, categories, media, offline releases, emptying the recycle bin, user accounts and the audit log. |
+| **Editor** | Courses, groups and categories, and the media library. Can restore from the recycle bin, but not delete from it permanently. |
+
+### Managing users
+
+Administrators manage accounts at **/admin/users**:
+
+- **Create** a user with a name, username and role. A temporary password is
+  generated and shown once; pass it on, and they choose their own password
+  when they first sign in.
+- **Reset a password** the same way when someone forgets theirs. Resetting
+  signs them out everywhere.
+- **Change a role**, **disable** an account (signing it out at once, without
+  deleting it), **sign someone out everywhere**, or **delete** an account.
+  Deleting an account doesn't touch any course.
+- You can't change your own role, disable or delete yourself, and nobody can
+  remove the last active administrator.
+
+Everyone can change their own password, and see where they're signed in, from
+**/admin/account** (click your name in the admin bar).
+
+### Security
+
+- Passwords are hashed with scrypt; new ones need at least 12 characters and
+  can't be a common password or contain the username.
+- Five failed sign-ins lock a username for 15 minutes, and repeated failures
+  from one address lock that address. The setup code is limited the same way.
+- Sessions are kept on the server, so signing out, a password change, a reset
+  or disabling an account ends them immediately. Only a hash of each session
+  token is stored.
+- **/admin/audit** lists sign-ins, failed attempts, account changes, deletions
+  and offline releases for a year.
+
+### Locked out?
+
+If no administrator can sign in, run this on the server to reset (or create) an
+administrator account. It prints a temporary password:
+
+```bash
+docker compose exec app node scripts/reset-admin.mjs <username>   # container
+npm run reset-admin -- <username>                                 # source checkout
+```
 
 ## Organising the catalogue
 
@@ -196,10 +272,14 @@ file moves it to the recycle bin at **/admin/trash** instead:
 | `src/app/page.tsx` | Skill catalogue with search and group/category filters |
 | `src/app/skills/[slug]/page.tsx` | Skill detail page with the resource viewer |
 | `src/components/ResourceViewer.tsx` | PDF viewer, image lightbox, storyboard stepper, Vimeo embed |
-| `src/app/admin/` | Admin section: login, course list, skill and resource editors, recycle bin |
+| `src/app/admin/` | Admin section: sign-in, course list, skill and resource editors, recycle bin |
+| `src/app/admin/users/`, `account/`, `audit/`, `setup/` | User management, your account, audit log, first-run setup |
 | `src/app/admin/categories/page.tsx` | Manage groups and categories |
 | `src/app/admin/media/` | Media library: browse, upload, edit, replace, delete |
-| `src/app/admin/actions.ts` | Server actions: auth, course/resource/taxonomy CRUD |
+| `src/app/admin/actions.ts` | Server actions: sign-in, course/resource/taxonomy CRUD |
+| `src/lib/auth.ts` | Sessions in cookies, `requireUser` / `requireRole` guards |
+| `src/lib/users.ts`, `sessions.ts`, `passwords.ts` | Accounts and their rules, server-side sessions, scrypt hashing |
+| `src/lib/bootstrap.ts` | First administrator: setup code or `ADMIN_PASSWORD` |
 | `src/app/files/[...path]/route.ts` | Serves library files as `/files/<id>/<name>` |
 | `src/lib/media.ts` | The media library: uploads, folders, tags, usage, resolving |
 | `src/lib/db.ts` | SQLite schema, migrations + first-run seed data |

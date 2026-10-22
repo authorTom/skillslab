@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { listReleases } from "@/lib/offline/releases";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import BuildReleaseForm from "./BuildReleaseForm";
@@ -29,7 +29,7 @@ function formatDate(iso: string): string {
 }
 
 export default async function ReleasesPage() {
-  await requireAdmin();
+  await requireRole("admin");
   const releases = listReleases();
 
   return (

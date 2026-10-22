@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireAdmin } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
+import { requireRole } from "@/lib/auth";
 import { buildRelease } from "@/lib/offline/export";
 import {
   deleteRelease,
@@ -16,7 +17,7 @@ export async function buildReleaseAction(
   _prev: ReleaseActionState,
   formData: FormData
 ): Promise<ReleaseActionState> {
-  await requireAdmin();
+  const user = await requireRole("admin");
   const version = (formData.get("version") as string)?.trim();
   if (!version) return { error: "Version is required." };
 
@@ -36,6 +37,7 @@ export async function buildReleaseAction(
 
   markCurrent(result);
   enforceRetention(5);
+  recordAudit(user, "release.build", { target: version });
   revalidatePath("/admin/releases");
   const { counts } = result.manifest;
   return {
@@ -44,17 +46,18 @@ export async function buildReleaseAction(
 }
 
 export async function markCurrentAction(formData: FormData): Promise<void> {
-  await requireAdmin();
+  const user = await requireRole("admin");
   const id = formData.get("id") as string;
   if (!id) return;
   markCurrent(id);
+  recordAudit(user, "release.mark_current", { target: id });
   revalidatePath("/admin/releases");
 }
 
 export async function deleteReleaseAction(formData: FormData): Promise<void> {
-  await requireAdmin();
+  const user = await requireRole("admin");
   const id = formData.get("id") as string;
   if (!id) return;
-  deleteRelease(id);
+  if (deleteRelease(id)) recordAudit(user, "release.delete", { target: id });
   revalidatePath("/admin/releases");
 }

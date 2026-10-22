@@ -23,6 +23,8 @@ ENV NODE_ENV=production \
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+# Lockout recovery: docker compose exec app node scripts/reset-admin.mjs <username>
+COPY --from=builder /app/scripts/reset-admin.mjs ./scripts/reset-admin.mjs
 
 # SQLite database + uploaded files live here; mount a volume to persist them.
 RUN mkdir -p data && chown node:node data
