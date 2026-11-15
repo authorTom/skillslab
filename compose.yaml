@@ -1,6 +1,9 @@
 services:
   app:
-    image: ghcr.io/authortom/skillslab:latest
+    # The release to run, from SKILLSLAB_VERSION in .env (e.g. 0.1.0 for the
+    # git tag v0.1.0). Pinned so an upgrade only happens when you choose: see
+    # "Upgrading" in the README.
+    image: ghcr.io/authortom/skillslab:${SKILLSLAB_VERSION:?Set SKILLSLAB_VERSION in .env to the release to run, e.g. 0.1.0}
     # Not published on the host: everything goes through Caddy below, which
     # terminates HTTPS. The app is reachable only on the compose network.
     expose:
@@ -36,7 +39,7 @@ services:
         - CMD
         - node
         - -e
-        - "fetch('http://localhost:3000/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+        - "fetch('http://localhost:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
       interval: 30s
       timeout: 5s
       retries: 3

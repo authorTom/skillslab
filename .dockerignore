@@ -5,7 +5,7 @@ data
 backups
 .env*
 Dockerfile
-docker-compose.yml
+compose.yaml
 .dockerignore
 README.md
 apps

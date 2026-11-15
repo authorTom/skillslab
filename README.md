@@ -56,12 +56,14 @@ LMS integration; it is a well-organised library, not a learning platform.
 
 ### With Docker (recommended)
 
-Pushes to `main` (and `v*` tags) publish a multi-arch image to GitHub Container
-Registry. The shipped `compose.yaml` pulls that prebuilt image, so you can
-deploy without cloning the repo:
+Pushes to `main` and `v*` tags publish a multi-arch image to GitHub Container
+Registry, tagged with the version for each `v*` tag (`v0.1.0` becomes `0.1.0`).
+The shipped `compose.yaml` pulls that prebuilt image, so you can deploy without
+cloning the repo:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/authorTom/skillslab/main/compose.yaml -o compose.yaml
+echo "SKILLSLAB_VERSION=0.1.0" > .env     # the release to run
 docker compose up -d
 docker compose logs app    # shows the one-time setup code
 ```
@@ -79,8 +81,9 @@ Keep that `.env` out of version control.
 
 `compose.yaml` runs two services: the app, and [Caddy](https://caddyserver.com)
 in front of it serving HTTPS. Only Caddy is published on the host. `data/` is
-kept in a named volume, the app runs under an `init` process, and it has a
-healthcheck.
+kept in a named volume, the app runs under an `init` process, and its
+healthcheck calls `GET /api/health`, which answers `ok` while the database
+does (and nothing more, so it's fine for monitoring to poll it).
 
 To build from source instead of pulling (multi-stage `Dockerfile`, Next.js
 standalone output, runs as a non-root user):
@@ -487,6 +490,25 @@ The restore refuses to run while the app has the database open. `--force`
 overrides that, but restart the app straight afterwards. Nothing is deleted:
 what was in `data/` is moved to `data/.pre-restore-<time>/` first, for you to
 remove once you're happy.
+
+## Upgrading
+
+The version that runs is the one in `SKILLSLAB_VERSION` in `.env`, so nothing
+changes until you choose. To upgrade:
+
+```bash
+docker compose exec app node scripts/backup.mjs    # 1. take a backup
+# 2. set SKILLSLAB_VERSION in .env to the new version
+docker compose pull                                 # 3. fetch it
+docker compose up -d                                # 4. restart on it
+```
+
+The app migrates its database on the first start of a new version, and some
+migrations are one-way. To go back, set the previous version again and
+[restore](#restoring) the backup from step 1: an older version can't be relied
+on to read a database a newer one has migrated.
+
+Read the release notes before upgrading: anything you need to do will be there.
 
 ## Licence
 
