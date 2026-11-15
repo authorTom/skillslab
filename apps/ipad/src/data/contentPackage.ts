@@ -53,6 +53,8 @@ interface ContentPackagePlugin {
   cancel(): Promise<void>;
   close(options: { id: string }): Promise<void>;
   freeSpace(): Promise<{ bytes: number }>;
+  /** The installed app's marketing version and build number. */
+  appInfo(): Promise<{ version: string; build: string }>;
   addListener(event: "installProgress" | "verifyProgress", listener: (p: CopyProgress) => void): Promise<PluginListenerHandle>;
   addListener(event: "packageOpened", listener: (p: OpenedPackage | UnopenablePackage) => void): Promise<PluginListenerHandle>;
 }

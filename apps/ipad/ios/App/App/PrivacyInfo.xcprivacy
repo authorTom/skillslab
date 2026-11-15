@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The app's privacy manifest. It declares the required-reason APIs used by the
+  app's own code and by plugins that ship no manifest of their own:
+
+  - File timestamps (C617.1): @capacitor/filesystem, through IONFilesystemLib,
+    reads files' creation and modification dates for Filesystem.stat(), which
+    the app calls on its own downloaded content in its container.
+  - Disk space (E174.1): the content-package plugin checks free space before
+    writing an installed package (availableSpace in PackageInstaller.swift).
+
+  SQLCipher (for @capacitor-community/sqlite) and ZIPFoundation ship their own
+  manifests; Capacitor's and Cordova's declare nothing. The app collects no
+  data and does no tracking.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>E174.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

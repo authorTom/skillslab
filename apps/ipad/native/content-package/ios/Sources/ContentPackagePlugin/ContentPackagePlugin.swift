@@ -43,7 +43,8 @@ public class ContentPackagePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPicker
         CAPPluginMethod(name: "verify", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "cancel", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "freeSpace", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "freeSpace", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "appInfo", returnType: CAPPluginReturnPromise)
     ]
 
     private static let packageType = UTType("uk.skillslab.content-package")
@@ -329,5 +330,15 @@ public class ContentPackagePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPicker
 
     @objc func freeSpace(_ call: CAPPluginCall) {
         call.resolve(["bytes": availableSpace(at: documents) ?? 0])
+    }
+
+    /// The app's marketing version and build number, as set by
+    /// scripts/set-version.mjs, for the Settings page.
+    @objc func appInfo(_ call: CAPPluginCall) {
+        let info = Bundle.main.infoDictionary ?? [:]
+        call.resolve([
+            "version": info["CFBundleShortVersionString"] as? String ?? "",
+            "build": info["CFBundleVersion"] as? String ?? ""
+        ])
     }
 }

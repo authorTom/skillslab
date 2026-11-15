@@ -5,3 +5,6 @@
 declare module "pdfjs-dist/legacy/build/pdf.mjs" {
   export * from "pdfjs-dist";
 }
+
+/** package.json's version, from vite.config.ts. */
+declare const __APP_VERSION__: string;

@@ -11,6 +11,7 @@ import PinPad from "@/components/PinPad";
 import ContentCheck from "@/components/ContentCheck";
 import { canInstallFromFiles } from "@/data/contentPackage";
 import { formatDate } from "@/data/format";
+import { formatAppVersion, getAppVersion } from "@/data/appInfo";
 import { GroupedBody, GroupedSection, InfoList, InfoRow, NavRow, Notice } from "@/components/Grouped";
 import { CheckCircleIcon, LockIcon, RefreshIcon } from "@/components/icons";
 
@@ -29,6 +30,11 @@ interface ContentInfo {
 
 export default function SettingsPage({ back, navigate }: SettingsPageProps) {
   const [info, setInfo] = useState<ContentInfo | null>(null);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    getAppVersion().then((v) => setAppVersion(formatAppVersion(v)));
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -105,6 +111,7 @@ export default function SettingsPage({ back, navigate }: SettingsPageProps) {
         <GroupedSection title="About">
           <InfoList>
             <InfoRow label="App" value="SkillsLab Reader" />
+            <InfoRow label="Version" value={appVersion ?? "…"} mono />
             <InfoRow label="Platform" value="iPad (iOS)" />
           </InfoList>
         </GroupedSection>

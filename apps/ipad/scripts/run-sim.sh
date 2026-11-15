@@ -14,7 +14,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DEVICE="iPad Pro 11-inch (M5)"
-APP_ID="uk.nhs.skillslab"
+APP_ID="uk.skillslab.app"
 BUILD=1
 SHOT="${TMPDIR:-/tmp}/skillslab-sim.png"
 DERIVED="${TMPDIR:-/tmp}/skillslab-derived"
