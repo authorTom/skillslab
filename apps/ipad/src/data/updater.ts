@@ -9,7 +9,8 @@ import {
   activate,
   getPackageState,
 } from "./packages";
-import { getServerUrl, getLastEtag, setLastEtag } from "./settings";
+import { checkServerUrl, getServerUrl, getLastEtag, setLastEtag } from "./settings";
+import { explainFetchFailure } from "./connection";
 import { canInstallFromFiles, ContentPackage } from "./contentPackage";
 import type { ReleaseManifest } from "./types";
 
@@ -42,6 +43,8 @@ export async function checkForUpdate(): Promise<
   if (!serverUrl) {
     return { available: false, reason: "No server URL configured." };
   }
+  const valid = checkServerUrl(serverUrl);
+  if (!valid.ok) return { available: false, reason: valid.error };
 
   const status = await Network.getStatus();
   if (!status.connected) {
@@ -52,11 +55,12 @@ export async function checkForUpdate(): Promise<
   const etag = getLastEtag();
   if (etag) headers["If-None-Match"] = etag;
 
+  const latestUrl = `${serverUrl}/api/offline/releases/latest`;
   let response: Response;
   try {
-    response = await fetch(`${serverUrl}/api/offline/releases/latest`, { headers });
+    response = await fetch(latestUrl, { headers });
   } catch {
-    return { available: false, reason: "Could not reach the server." };
+    return { available: false, reason: await explainFetchFailure(latestUrl) };
   }
 
   if (response.status === 304) {

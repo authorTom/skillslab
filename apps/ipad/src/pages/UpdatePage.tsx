@@ -21,7 +21,7 @@ import { useFileInstall } from "@/hooks/useFileInstall";
 import { canInstallFromFiles } from "@/data/contentPackage";
 import { formatBytes } from "@/data/format";
 import type { UpdateProgress } from "@/data/updater";
-import { getServerUrl, setServerUrl } from "@/data/settings";
+import { checkServerUrl, getServerUrl, setServerUrl } from "@/data/settings";
 import { getPackageState } from "@/data/packages";
 import { getPublicKey, setPublicKey } from "@/data/signature";
 import { UP_TO_DATE } from "@/data/updater";
@@ -59,17 +59,28 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
 
   const urlDirty = url.trim() !== savedUrl;
 
-  function saveUrl() {
-    setServerUrl(url.trim());
+  const [urlError, setUrlError] = useState<string | null>(null);
+  const urlErrorId = useId();
+
+  /** Saves the address if it is valid, showing why not otherwise. */
+  function saveUrl(): boolean {
+    const result = checkServerUrl(url);
+    if (!result.ok) {
+      setUrlError(result.error);
+      return false;
+    }
+    setUrlError(null);
+    setServerUrl(result.url);
     const normalised = getServerUrl();
     setSavedUrl(normalised);
     setUrl(normalised);
+    return true;
   }
 
   function handleCheck() {
     // The updater reads the saved URL, so an edited but unsaved address
     // would otherwise be ignored.
-    if (urlDirty) saveUrl();
+    if (urlDirty && !saveUrl()) return;
     setOrigin("online");
     check();
   }
@@ -133,9 +144,15 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
                 autoCorrect="off"
                 spellCheck={false}
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://skills.example.nhs.uk"
-                className={INPUT}
+                onChange={(e) => {
+                  setUrl(e.target.value);
+                  setUrlError(null);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && urlDirty && saveUrl()}
+                placeholder="https://skillslab.trust.internal"
+                aria-invalid={urlError ? true : undefined}
+                aria-describedby={urlError ? urlErrorId : undefined}
+                className={`${INPUT}${urlError ? " ring-2 ring-danger" : ""}`}
               />
               <Button
                 variant="secondary"
@@ -146,6 +163,11 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
                 {!urlDirty && savedUrl ? "Saved" : "Save"}
               </Button>
             </div>
+            {urlError && (
+              <p id={urlErrorId} role="alert" className="mt-2 text-[0.875rem] text-danger-ink">
+                {urlError}
+              </p>
+            )}
           </GroupedBody>
 
           <GroupedBody className="border-t border-line">

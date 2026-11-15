@@ -44,7 +44,8 @@ public class ContentPackagePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPicker
         CAPPluginMethod(name: "cancel", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "freeSpace", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "appInfo", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "appInfo", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "diagnoseConnection", returnType: CAPPluginReturnPromise)
     ]
 
     private static let packageType = UTType("uk.skillslab.content-package")
@@ -340,5 +341,31 @@ public class ContentPackagePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPicker
             "version": info["CFBundleShortVersionString"] as? String ?? "",
             "build": info["CFBundleVersion"] as? String ?? ""
         ])
+    }
+
+    /// Repeats a request that failed in the web view, to say why: an
+    /// untrusted certificate, an unknown host, and so on. Resolves
+    /// `{ problem: "none", status }` when it succeeds this time.
+    @objc func diagnoseConnection(_ call: CAPPluginCall) {
+        guard let string = call.getString("url"), let url = URL(string: string),
+              url.scheme == "https" || url.scheme == "http" else {
+            call.reject("A server URL is required.")
+            return
+        }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        request.httpMethod = "HEAD"
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            if let error = error {
+                call.resolve([
+                    "problem": ConnectionProblem.classify(error).rawValue,
+                    "code": (error as NSError).code
+                ])
+            } else {
+                call.resolve([
+                    "problem": "none",
+                    "status": (response as? HTTPURLResponse)?.statusCode ?? 0
+                ])
+            }
+        }.resume()
     }
 }
