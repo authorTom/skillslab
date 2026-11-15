@@ -14,12 +14,18 @@ import { Readable } from "stream";
  */
 export const SVG_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
 
+/** Only the app's own pages may frame a file (skill pages frame PDFs). */
+const FRAME_ANCESTORS = "frame-ancestors 'self'";
+
 /** Headers every served file gets, plus the SVG lockdown where it applies. */
 export function securityHeaders(contentType: string): Record<string, string> {
-  const headers: Record<string, string> = { "X-Content-Type-Options": "nosniff" };
-  // Not on PDFs: a sandboxed document can't run the browser's built-in viewer.
-  if (contentType === "image/svg+xml") headers["Content-Security-Policy"] = SVG_CSP;
-  return headers;
+  return {
+    "X-Content-Type-Options": "nosniff",
+    // No sandbox on PDFs: a sandboxed document can't run the browser's
+    // built-in viewer.
+    "Content-Security-Policy":
+      contentType === "image/svg+xml" ? `${SVG_CSP}; ${FRAME_ANCESTORS}` : FRAME_ANCESTORS,
+  };
 }
 
 export type ByteRange = { start: number; end: number };

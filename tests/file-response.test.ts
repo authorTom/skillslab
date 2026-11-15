@@ -40,9 +40,15 @@ describe("securityHeaders", () => {
   });
 
   it("sandboxes SVG but leaves PDFs viewable in the browser", () => {
-    expect(securityHeaders("image/svg+xml")["Content-Security-Policy"]).toBe(SVG_CSP);
-    expect(SVG_CSP).toContain("sandbox");
-    expect(securityHeaders("application/pdf")["Content-Security-Policy"]).toBeUndefined();
+    expect(securityHeaders("image/svg+xml")["Content-Security-Policy"]).toContain(SVG_CSP);
+    expect(SVG_CSP).toBe("default-src 'none'; style-src 'unsafe-inline'; sandbox");
+    expect(securityHeaders("application/pdf")["Content-Security-Policy"]).not.toContain("sandbox");
+  });
+
+  it("lets only the app's own pages frame a file", () => {
+    for (const type of ["application/pdf", "image/svg+xml", "image/png"]) {
+      expect(securityHeaders(type)["Content-Security-Policy"]).toContain("frame-ancestors 'self'");
+    }
   });
 });
 
@@ -80,7 +86,7 @@ describe("/files route", () => {
     expect(res.headers.get("content-type")).toBe("application/pdf");
     expect(res.headers.get("content-length")).toBe(String(pdf.length));
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
-    expect(res.headers.get("content-security-policy")).toBeNull();
+    expect(res.headers.get("content-security-policy")).toBe("frame-ancestors 'self'");
     expect(Buffer.from(await res.arrayBuffer()).equals(pdf)).toBe(true);
   });
 
@@ -101,7 +107,7 @@ describe("/files route", () => {
   it("serves SVG under a sandboxing CSP", async () => {
     const res = await get(["2", "Diagram.svg"]);
     expect(res.status).toBe(200);
-    expect(res.headers.get("content-security-policy")).toBe(SVG_CSP);
+    expect(res.headers.get("content-security-policy")).toBe(`${SVG_CSP}; frame-ancestors 'self'`);
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
