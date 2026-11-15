@@ -35,6 +35,17 @@ export interface CopyProgress {
 
 export type FileProblem = "missing" | "size" | "damaged";
 
+/** Why the server couldn't be reached (ConnectionProblem.swift). */
+export type ConnectionProblem =
+  | "untrusted-certificate"
+  | "certificate-date"
+  | "secure-connection"
+  | "host-not-found"
+  | "cannot-connect"
+  | "timed-out"
+  | "offline"
+  | "other";
+
 interface ContentPackagePlugin {
   choose(): Promise<OpenedPackage | { cancelled: true }>;
   openInDocuments(options: { path: string }): Promise<OpenedPackage>;
@@ -53,6 +64,17 @@ interface ContentPackagePlugin {
   cancel(): Promise<void>;
   close(options: { id: string }): Promise<void>;
   freeSpace(): Promise<{ bytes: number }>;
+  /**
+   * Ed25519 check with CryptoKit. Rejects with BAD_KEY or BAD_SIGNATURE when
+   * the key or signature is malformed.
+   */
+  verifySignature(options: { payload: string; signature: string; publicKey: string }): Promise<{ valid: boolean }>;
+  /** Managed app configuration from the MDM: only the keys that are set. */
+  managedConfig(): Promise<{ serverUrl?: string; signingPublicKey?: string }>;
+  /** Repeats a request natively to find out why it failed. */
+  diagnoseConnection(options: { url: string }): Promise<{ problem: ConnectionProblem | "none"; code?: number; status?: number }>;
+  /** The installed app's marketing version and build number. */
+  appInfo(): Promise<{ version: string; build: string }>;
   addListener(event: "installProgress" | "verifyProgress", listener: (p: CopyProgress) => void): Promise<PluginListenerHandle>;
   addListener(event: "packageOpened", listener: (p: OpenedPackage | UnopenablePackage) => void): Promise<PluginListenerHandle>;
 }

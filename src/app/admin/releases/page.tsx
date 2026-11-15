@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { requireRole } from "@/lib/auth";
 import { listReleases } from "@/lib/offline/releases";
+import { releaseSignature, signingStatus, type SigningStatus } from "@/lib/offline/release-signing";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import BuildReleaseForm from "./BuildReleaseForm";
+import PublicKeyField from "./PublicKeyField";
 import { buildReleaseAction, deleteReleaseAction, markCurrentAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +33,7 @@ function formatDate(iso: string): string {
 export default async function ReleasesPage() {
   await requireRole("admin");
   const releases = listReleases();
+  const signing = signingStatus();
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
@@ -48,6 +51,8 @@ export default async function ReleasesPage() {
           ← Back to courses
         </Link>
       </div>
+
+      <SigningPanel status={signing} />
 
       <section className="mt-8 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
         <h2 className="text-base font-semibold">Build a new release</h2>
@@ -82,6 +87,7 @@ export default async function ReleasesPage() {
                           Current
                         </span>
                       )}
+                      <SignatureBadge state={releaseSignature(r.manifest, signing)} />
                     </p>
                     <p className="mt-0.5 text-xs text-stone-400">
                       {formatDate(r.createdAt)} · {r.counts.skills} skills ·{" "}
@@ -123,5 +129,72 @@ export default async function ReleasesPage() {
         </section>
       )}
     </main>
+  );
+}
+
+function SigningPanel({ status }: { status: SigningStatus }) {
+  if (status.state === "ready") {
+    return (
+      <section className="mt-8 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
+        <h2 className="text-base font-semibold">Release signing</h2>
+        <p className="mt-1 text-sm text-stone-500">
+          On. Every release is signed as it&rsquo;s built, and iPads configured with this public key
+          refuse any package it didn&rsquo;t sign.
+        </p>
+        <PublicKeyField publicKey={status.publicKey} />
+        <p className="mt-2 text-xs text-stone-400">
+          Use it as <code className="font-mono">signingPublicKey</code> in the iPads&rsquo; managed
+          configuration, or <code className="font-mono">VITE_SIGNING_PUBLIC_KEY</code> when building
+          the app.
+        </p>
+      </section>
+    );
+  }
+  if (status.state === "error") {
+    return (
+      <section className="mt-8 rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-900 sm:p-8">
+        <h2 className="text-base font-semibold">Release signing isn&rsquo;t working</h2>
+        <p className="mt-1">{status.message}</p>
+        <p className="mt-2 text-red-800">
+          Releases can&rsquo;t be built until this is fixed, or{" "}
+          <code className="font-mono">RELEASE_SIGNING_KEY_FILE</code> is unset.
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900 sm:p-8">
+      <h2 className="text-base font-semibold">Release signing is off</h2>
+      <p className="mt-1">
+        Releases are built unsigned. Production builds of the iPad app refuse unsigned packages. To
+        sign, point <code className="font-mono">RELEASE_SIGNING_KEY_FILE</code> at an Ed25519 private
+        key; the README explains how.
+      </p>
+    </section>
+  );
+}
+
+function SignatureBadge({ state }: { state: ReturnType<typeof releaseSignature> }) {
+  if (state === "signed") {
+    return (
+      <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600">
+        Signed
+      </span>
+    );
+  }
+  if (state === "other-key") {
+    return (
+      <span
+        className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+        title="Signed with a key other than the one configured now. iPads with the current key will refuse it."
+      >
+        Signed with another key
+      </span>
+    );
+  }
+  return (
+    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+      Unsigned
+    </span>
   );
 }

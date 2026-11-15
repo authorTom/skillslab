@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { recordAudit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth";
 import { buildRelease } from "@/lib/offline/export";
+import { signingStatus } from "@/lib/offline/release-signing";
 import {
   deleteRelease,
   enforceRetention,
@@ -26,10 +27,19 @@ export async function buildReleaseAction(
     return { error: "Invalid Vimeo policy." };
   }
 
-  const result = await buildRelease({
-    version,
-    vimeoPolicy: vimeoPolicy as VimeoPolicy,
-  });
+  let result;
+  try {
+    result = await buildRelease({
+      version,
+      vimeoPolicy: vimeoPolicy as VimeoPolicy,
+    });
+  } catch (error) {
+    // A signing key that is configured but unusable stops the build; say why
+    // (the message names the file, never the key).
+    const status = signingStatus();
+    if (status.state === "error") return { error: status.message };
+    throw error;
+  }
 
   if (!result.ok) {
     return { error: result.errors.join("\n") };
@@ -37,11 +47,14 @@ export async function buildReleaseAction(
 
   markCurrent(result);
   enforceRetention(5);
-  recordAudit(user, "release.build", { target: version });
+  recordAudit(user, "release.build", {
+    target: version,
+    detail: result.manifest.signature ? "signed" : "unsigned",
+  });
   revalidatePath("/admin/releases");
   const { counts } = result.manifest;
   return {
-    success: `Release ${version} built: ${counts.skills} skills, ${counts.resources} resources, ${counts.assets} assets.`,
+    success: `Release ${version} built${result.manifest.signature ? " and signed" : ""}: ${counts.skills} skills, ${counts.resources} resources, ${counts.assets} assets.`,
   };
 }
 

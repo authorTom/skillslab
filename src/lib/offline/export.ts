@@ -6,6 +6,7 @@ import { getDb, DATA_DIR, UPLOADS_DIR } from "../db";
 import { parseMediaRef } from "../media-refs";
 import { parseStoryboardFrames } from "../storyboard";
 import { packageIndex } from "./package";
+import { signatureFor } from "./release-signing";
 import {
   CONTENT_SCHEMA_VERSION,
   PACKAGE_FORMAT,
@@ -222,6 +223,12 @@ function buildReleaseInStaging(
     },
     min_app_content_schema_version: CONTENT_SCHEMA_VERSION,
   };
+
+  // Signed here, while the release is still in staging, so it is never
+  // published unsigned when a key is configured. A configured key that can't
+  // be used throws, which fails the build.
+  const signature = signatureFor(manifest);
+  if (signature) manifest.signature = signature;
 
   fs.writeFileSync(path.join(stagingDir, "manifest.json"), JSON.stringify(manifest, null, 2));
 

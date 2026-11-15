@@ -11,13 +11,23 @@
  *
  * The public key is a 32-byte Ed25519 key, stored as a base64 string.
  * Do not commit a real key to source control.
+ *
+ * On an iPad the check runs natively with CryptoKit (SignatureVerifier.swift
+ * in the content-package plugin), which works on every supported iOS
+ * version. WebCrypto's Ed25519 needs iOS 17, so it is only the fallback for
+ * running the app in a desktop browser with `vite` during development.
  */
 
+import { canInstallFromFiles, ContentPackage } from "./contentPackage";
+import { buildDefaults, getManagedConfig, provisioningReady, resolveSetting, type ResolvedSetting } from "./provisioning";
 import type { ReleaseManifest } from "./types";
+import { signingPayload } from "./signingPayload";
+
+export { signingPayload };
 
 const PUBLIC_KEY_STORAGE = "skillslab_signing_public_key";
 
-export function getPublicKey(): string {
+function storedPublicKey(): string {
   try {
     return localStorage.getItem(PUBLIC_KEY_STORAGE) ?? "";
   } catch {
@@ -25,7 +35,30 @@ export function getPublicKey(): string {
   }
 }
 
+/** The public key in use, and where it came from (see provisioning.ts). */
+export function getPublicKeySetting(): ResolvedSetting {
+  return resolveSetting(getManagedConfig().signingPublicKey, buildDefaults().signingPublicKey, storedPublicKey());
+}
+
+export function getPublicKey(): string {
+  return getPublicKeySetting().value;
+}
+
+/** True when the key can be set or cleared in the app. */
+export function canEditPublicKey(): boolean {
+  const { source } = getPublicKeySetting();
+  return source === null || source === "app";
+}
+
+/**
+ * Sets or clears the key entered in the app. Refused when the key comes from
+ * managed configuration or the build, so enforcement can't be switched off
+ * on the device.
+ */
 export function setPublicKey(base64Key: string): void {
+  if (!canEditPublicKey()) {
+    throw new Error("The signing key is set by your organisation and can’t be changed on this iPad.");
+  }
   try {
     if (base64Key) {
       localStorage.setItem(PUBLIC_KEY_STORAGE, base64Key);
@@ -41,19 +74,6 @@ export function isSignatureEnforced(): boolean {
   return getPublicKey().length > 0;
 }
 
-export function signingPayload(manifest: ReleaseManifest): string {
-  return [
-    manifest.format,
-    String(manifest.package_schema_version),
-    String(manifest.content_schema_version),
-    manifest.release_id,
-    manifest.release_version,
-    manifest.created_at,
-    manifest.catalogue.sha256,
-    String(manifest.catalogue.bytes),
-    ...manifest.assets.map((a) => `${a.sha256}:${a.bytes}`),
-  ].join("\n");
-}
 
 export interface SignedManifest extends ReleaseManifest {
   signature?: string;
@@ -63,6 +83,8 @@ export async function verifySignature(manifest: SignedManifest): Promise<
   | { valid: true }
   | { valid: false; reason: string }
 > {
+  // Never check against the in-app key before the MDM's has been read.
+  await provisioningReady();
   const keyB64 = getPublicKey();
   if (!keyB64) {
     return { valid: true };
@@ -81,6 +103,10 @@ export async function verifySignature(manifest: SignedManifest): Promise<
     const sigBytes = base64ToBytes(manifest.signature);
     if (sigBytes.length !== 64) {
       return { valid: false, reason: "Signature is not 64 bytes." };
+    }
+
+    if (canInstallFromFiles()) {
+      return await verifyNatively(manifest, keyB64, manifest.signature);
     }
 
     const payload = new TextEncoder().encode(signingPayload(manifest));
@@ -105,6 +131,24 @@ export async function verifySignature(manifest: SignedManifest): Promise<
       valid: false,
       reason: `Signature check error: ${err instanceof Error ? err.message : "unknown"}`,
     };
+  }
+}
+
+async function verifyNatively(
+  manifest: ReleaseManifest,
+  publicKey: string,
+  signature: string
+): Promise<{ valid: true } | { valid: false; reason: string }> {
+  try {
+    const { valid } = await ContentPackage.verifySignature({
+      payload: signingPayload(manifest),
+      signature,
+      publicKey,
+    });
+    return valid ? { valid: true } : { valid: false, reason: "Signature verification failed." };
+  } catch (err) {
+    const message = (err as { message?: string } | null)?.message;
+    return { valid: false, reason: message || "Signature check error: unknown" };
   }
 }
 

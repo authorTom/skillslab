@@ -43,7 +43,11 @@ public class ContentPackagePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPicker
         CAPPluginMethod(name: "verify", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "cancel", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "freeSpace", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "freeSpace", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "appInfo", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "diagnoseConnection", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "verifySignature", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "managedConfig", returnType: CAPPluginReturnPromise)
     ]
 
     private static let packageType = UTType("uk.skillslab.content-package")
@@ -329,5 +333,67 @@ public class ContentPackagePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPicker
 
     @objc func freeSpace(_ call: CAPPluginCall) {
         call.resolve(["bytes": availableSpace(at: documents) ?? 0])
+    }
+
+    /// The app's marketing version and build number, as set by
+    /// scripts/set-version.mjs, for the Settings page.
+    @objc func appInfo(_ call: CAPPluginCall) {
+        let info = Bundle.main.infoDictionary ?? [:]
+        call.resolve([
+            "version": info["CFBundleShortVersionString"] as? String ?? "",
+            "build": info["CFBundleVersion"] as? String ?? ""
+        ])
+    }
+
+    /// Repeats a request that failed in the web view, to say why: an
+    /// untrusted certificate, an unknown host, and so on. Resolves
+    /// `{ problem: "none", status }` when it succeeds this time.
+    @objc func diagnoseConnection(_ call: CAPPluginCall) {
+        guard let string = call.getString("url"), let url = URL(string: string),
+              url.scheme == "https" || url.scheme == "http" else {
+            call.reject("A server URL is required.")
+            return
+        }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        request.httpMethod = "HEAD"
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            if let error = error {
+                call.resolve([
+                    "problem": ConnectionProblem.classify(error).rawValue,
+                    "code": (error as NSError).code
+                ])
+            } else {
+                call.resolve([
+                    "problem": "none",
+                    "status": (response as? HTTPURLResponse)?.statusCode ?? 0
+                ])
+            }
+        }.resume()
+    }
+
+    /// Ed25519 check of a manifest signature (see SignatureVerifier).
+    /// Resolves `{ valid }`; rejects with BAD_KEY or BAD_SIGNATURE when either
+    /// isn't the right shape.
+    @objc func verifySignature(_ call: CAPPluginCall) {
+        guard let payload = call.getString("payload"),
+              let signature = call.getString("signature"),
+              let publicKey = call.getString("publicKey") else {
+            call.reject("payload, signature and publicKey are required.")
+            return
+        }
+        do {
+            let valid = try SignatureVerifier.verify(payload: payload, signature: signature, publicKey: publicKey)
+            call.resolve(["valid": valid])
+        } catch SignatureVerifier.Failure.badPublicKey {
+            call.reject("Configured public key is not a 32-byte Ed25519 key.", "BAD_KEY")
+        } catch {
+            call.reject("Signature is not 64 bytes.", "BAD_SIGNATURE")
+        }
+    }
+
+    /// The MDM's managed app configuration (see ManagedConfiguration). The
+    /// app asks again whenever it returns to the foreground.
+    @objc func managedConfig(_ call: CAPPluginCall) {
+        call.resolve(ManagedConfiguration.read())
     }
 }

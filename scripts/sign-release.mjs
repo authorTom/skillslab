@@ -7,9 +7,10 @@
  * repository produces a signature, so this is the counterpart to the
  * verification in apps/ipad/src/data/signature.ts.
  *
- * The signing payload MUST stay byte-identical to `signingPayload` in
- * apps/ipad/src/data/signature.ts. tests/sign-release.test.ts pins the
- * format so the two cannot drift apart silently.
+ * The server signs releases itself when RELEASE_SIGNING_KEY_FILE is set (see
+ * the README), so this is for signing by hand, printing the public key, and
+ * checking a manifest. The signing code lives in src/lib/offline/signing.mjs,
+ * shared with the server.
  *
  * Usage:
  *   # derive the base64 public key to paste into the app
@@ -31,71 +32,12 @@
  * and keep the private key in a secrets manager or HSM.
  */
 
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { publicKeyBase64, signManifest, verifyManifest } from "../src/lib/offline/signing.mjs";
 
-/**
- * Canonical signing payload. Mirrors `signingPayload` in
- * apps/ipad/src/data/signature.ts — keep the two in lockstep.
- */
-export function signingPayload(manifest) {
-  return [
-    manifest.format,
-    String(manifest.package_schema_version),
-    String(manifest.content_schema_version),
-    manifest.release_id,
-    manifest.release_version,
-    manifest.created_at,
-    manifest.catalogue.sha256,
-    String(manifest.catalogue.bytes),
-    ...manifest.assets.map((a) => `${a.sha256}:${a.bytes}`),
-  ].join("\n");
-}
-
-/** Raw 32-byte Ed25519 public key, base64 encoded — the form the app expects. */
-export function publicKeyBase64(privateKeyPem) {
-  const key = crypto.createPrivateKey(privateKeyPem);
-  const spki = crypto.createPublicKey(key).export({ type: "spki", format: "der" });
-  return Buffer.from(spki.subarray(-32)).toString("base64");
-}
-
-/** Base64 Ed25519 signature over the manifest's canonical payload. */
-export function signManifest(manifest, privateKeyPem) {
-  const key = crypto.createPrivateKey(privateKeyPem);
-  if (key.asymmetricKeyType !== "ed25519") {
-    throw new Error(`Expected an Ed25519 private key, got ${key.asymmetricKeyType}.`);
-  }
-  const payload = Buffer.from(signingPayload(manifest), "utf8");
-  return crypto.sign(null, payload, key).toString("base64");
-}
-
-export function verifyManifest(manifest, publicKeyB64) {
-  if (!manifest.signature) {
-    return { valid: false, reason: "Package is unsigned but signature verification is enabled." };
-  }
-  const keyBytes = Buffer.from(publicKeyB64, "base64");
-  if (keyBytes.length !== 32) {
-    return { valid: false, reason: "Configured public key is not 32 bytes." };
-  }
-  const sigBytes = Buffer.from(manifest.signature, "base64");
-  if (sigBytes.length !== 64) {
-    return { valid: false, reason: "Signature is not 64 bytes." };
-  }
-  const key = crypto.createPublicKey({
-    key: Buffer.concat([
-      Buffer.from("302a300506032b6570032100", "hex"), // Ed25519 SPKI prefix
-      keyBytes,
-    ]),
-    format: "der",
-    type: "spki",
-  });
-  const payload = Buffer.from(signingPayload(manifest), "utf8");
-  return crypto.verify(null, payload, key, sigBytes)
-    ? { valid: true }
-    : { valid: false, reason: "Signature verification failed." };
-}
+export { signingPayload, publicKeyBase64, signManifest, verifyManifest } from "../src/lib/offline/signing.mjs";
 
 function resolveManifestPath(target) {
   const stat = fs.statSync(target);

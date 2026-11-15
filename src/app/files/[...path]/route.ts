@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { getDb, UPLOADS_DIR } from "@/lib/db";
+import { fileResponse, securityHeaders } from "@/lib/file-response";
 import { MIME_TYPES } from "@/lib/media-types";
 
 /**
@@ -40,75 +41,22 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
   } catch {
     return notFound();
   }
+  if (!stat.isFile()) return notFound();
 
   const filename = asciiName(media?.filename ?? storageName);
-  const rangeHeader = request.headers.get("range");
-
-  if (rangeHeader && contentType.startsWith("video/")) {
-    return rangeResponse(resolved, stat.size, rangeHeader, contentType, filename);
-  }
-
-  const data = fs.readFileSync(resolved);
-  return new Response(new Uint8Array(data), {
-    headers: {
-      "Content-Type": contentType,
-      "Content-Length": String(data.length),
-      "Content-Disposition": `inline; filename="${filename}"`,
-      "Cache-Control": "public, max-age=3600",
-      "Accept-Ranges": "bytes",
-    },
+  return fileResponse(resolved, stat.size, request.headers.get("range"), {
+    ...securityHeaders(contentType),
+    "Content-Type": contentType,
+    "Content-Disposition": `inline; filename="${filename}"`,
+    "Cache-Control": "public, max-age=3600",
   });
 }
 
-function rangeResponse(
-  filePath: string,
-  fileSize: number,
-  rangeHeader: string,
-  contentType: string,
-  filename: string
-): Response {
-  const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
-  if (!match) {
-    return new Response("Range Not Satisfiable", {
-      status: 416,
-      headers: { "Content-Range": `bytes */${fileSize}` },
-    });
-  }
-
-  const start = Number(match[1]);
-  const end = match[2] ? Math.min(Number(match[2]), fileSize - 1) : Math.min(start + 2 * 1024 * 1024, fileSize - 1);
-
-  if (start >= fileSize || end >= fileSize || start > end) {
-    return new Response("Range Not Satisfiable", {
-      status: 416,
-      headers: { "Content-Range": `bytes */${fileSize}` },
-    });
-  }
-
-  const length = end - start + 1;
-  const handle = fs.openSync(filePath, "r");
-  try {
-    const buffer = Buffer.alloc(length);
-    fs.readSync(handle, buffer, 0, length, start);
-
-    return new Response(new Uint8Array(buffer), {
-      status: 206,
-      headers: {
-        "Content-Type": contentType,
-        "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-        "Content-Length": String(length),
-        "Content-Disposition": `inline; filename="${filename}"`,
-        "Cache-Control": "public, max-age=3600",
-        "Accept-Ranges": "bytes",
-      },
-    });
-  } finally {
-    fs.closeSync(handle);
-  }
-}
-
 function notFound() {
-  return new Response("Not found", { status: 404 });
+  return new Response("Not found", {
+    status: 404,
+    headers: { "X-Content-Type-Options": "nosniff" },
+  });
 }
 
 /** Header-safe filename: quotes and non-ASCII would break the header. */

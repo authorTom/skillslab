@@ -16,6 +16,8 @@ const packages = vi.hoisted(() => ({
 
 vi.mock("../src/data/contentPackage", () => ({
   ContentPackage: native,
+  // Signature checks run as in a browser (WebCrypto), with no MDM config.
+  canInstallFromFiles: () => false,
 }));
 vi.mock("../src/data/packages", async (original) => ({
   ...(await original<typeof import("../src/data/packages")>()),

@@ -21,9 +21,11 @@ import { useFileInstall } from "@/hooks/useFileInstall";
 import { canInstallFromFiles } from "@/data/contentPackage";
 import { formatBytes } from "@/data/format";
 import type { UpdateProgress } from "@/data/updater";
-import { getServerUrl, setServerUrl } from "@/data/settings";
+import { checkServerUrl, getServerUrl, getServerUrlSetting, setServerUrl } from "@/data/settings";
+import { SOURCE_LABELS, type ResolvedSetting } from "@/data/provisioning";
+import { useProvisioning } from "@/hooks/useProvisioning";
 import { getPackageState } from "@/data/packages";
-import { getPublicKey, setPublicKey } from "@/data/signature";
+import { canEditPublicKey, getPublicKey, getPublicKeySetting, setPublicKey } from "@/data/signature";
 import { UP_TO_DATE } from "@/data/updater";
 
 interface UpdatePageProps {
@@ -57,19 +59,33 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
     });
   }, [state.status, files.state.step]);
 
-  const urlDirty = url.trim() !== savedUrl;
+  useProvisioning();
+  const serverSetting = getServerUrlSetting();
+  const urlLocked = serverSetting.source === "managed" || serverSetting.source === "build";
+  const urlDirty = !urlLocked && url.trim() !== savedUrl;
 
-  function saveUrl() {
-    setServerUrl(url.trim());
+  const [urlError, setUrlError] = useState<string | null>(null);
+  const urlErrorId = useId();
+
+  /** Saves the address if it is valid, showing why not otherwise. */
+  function saveUrl(): boolean {
+    const result = checkServerUrl(url);
+    if (!result.ok) {
+      setUrlError(result.error);
+      return false;
+    }
+    setUrlError(null);
+    setServerUrl(result.url);
     const normalised = getServerUrl();
     setSavedUrl(normalised);
     setUrl(normalised);
+    return true;
   }
 
   function handleCheck() {
     // The updater reads the saved URL, so an edited but unsaved address
     // would otherwise be ignored.
-    if (urlDirty) saveUrl();
+    if (urlDirty && !saveUrl()) return;
     setOrigin("online");
     check();
   }
@@ -121,6 +137,10 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
 
         <GroupedSection title="Online update">
           <GroupedBody>
+            {urlLocked ? (
+              <LockedSetting label="CMS server URL" setting={serverSetting} />
+            ) : (
+            <>
             <label htmlFor={urlId} className="block text-[0.9375rem] font-medium text-ink">
               CMS server URL
             </label>
@@ -133,9 +153,15 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
                 autoCorrect="off"
                 spellCheck={false}
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://skills.example.nhs.uk"
-                className={INPUT}
+                onChange={(e) => {
+                  setUrl(e.target.value);
+                  setUrlError(null);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && urlDirty && saveUrl()}
+                placeholder="https://skillslab.trust.internal"
+                aria-invalid={urlError ? true : undefined}
+                aria-describedby={urlError ? urlErrorId : undefined}
+                className={`${INPUT}${urlError ? " ring-2 ring-danger" : ""}`}
               />
               <Button
                 variant="secondary"
@@ -146,6 +172,13 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
                 {!urlDirty && savedUrl ? "Saved" : "Save"}
               </Button>
             </div>
+            {urlError && (
+              <p id={urlErrorId} role="alert" className="mt-2 text-[0.875rem] text-danger-ink">
+                {urlError}
+              </p>
+            )}
+            </>
+            )}
           </GroupedBody>
 
           <GroupedBody className="border-t border-line">
@@ -156,7 +189,7 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
               <Button
                 icon={<RefreshIcon className="h-4 w-4" />}
                 busy={state.status === "checking"}
-                disabled={busy || !url.trim()}
+                disabled={busy || !(urlLocked ? serverSetting.value : url.trim())}
                 onClick={handleCheck}
               >
                 {state.status === "checking" ? "Checking…" : "Check for updates"}
@@ -319,12 +352,28 @@ function DownloadProgress({ progress, activating }: { progress: UpdateProgress; 
   );
 }
 
+/** A setting that comes from the MDM or the build: shown, not editable. */
+function LockedSetting({ label, setting }: { label: string; setting: ResolvedSetting }) {
+  return (
+    <div>
+      <p className="text-[0.9375rem] font-medium text-ink">{label}</p>
+      <p className="mt-2 break-all rounded-xl bg-surface-2 px-3.5 py-2.5 font-mono text-[0.9375rem] text-ink">
+        {setting.value}
+      </p>
+      {setting.source && <p className="mt-1.5 text-[0.8125rem] text-ink-3">{SOURCE_LABELS[setting.source]}</p>}
+    </div>
+  );
+}
+
 function SignatureSection() {
+  useProvisioning();
+  const setting = getPublicKeySetting();
+  const editable = canEditPublicKey();
   const [key, setKey] = useState(getPublicKey);
   // Tracked in state so the status updates as soon as a key is saved.
   const [savedKey, setSavedKey] = useState(getPublicKey);
   const keyId = useId();
-  const enforced = savedKey.length > 0;
+  const enforced = editable ? savedKey.length > 0 : true;
   const dirty = key.trim() !== savedKey;
 
   function handleSave() {
@@ -342,7 +391,11 @@ function SignatureSection() {
   return (
     <GroupedSection
       title="Signature verification"
-      footer="Paste a base64-encoded Ed25519 public key (32 bytes). When a key is set, only content packages signed with it are accepted."
+      footer={
+        editable
+          ? "Paste a base64-encoded Ed25519 public key (32 bytes). When a key is set, only content packages signed with it are accepted."
+          : "Only content packages signed with this key are accepted. It can’t be changed or removed on this iPad."
+      }
     >
       <GroupedBody>
         <div className="flex items-center gap-3.5">
@@ -361,30 +414,38 @@ function SignatureSection() {
           </div>
         </div>
 
-        <label htmlFor={keyId} className="mt-5 block text-[0.9375rem] font-medium text-ink">
-          Public key
-        </label>
-        <div className="mt-2 flex gap-2">
-          <input
-            id={keyId}
-            type="text"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            placeholder="Base64 public key"
-            className={`${INPUT} font-mono`}
-          />
-          <Button variant="secondary" onClick={handleSave} disabled={!dirty || !key.trim()}>
-            Save
-          </Button>
-          {enforced && (
-            <Button variant="danger" onClick={handleClear}>
-              Clear
-            </Button>
-          )}
-        </div>
+        {editable ? (
+          <>
+            <label htmlFor={keyId} className="mt-5 block text-[0.9375rem] font-medium text-ink">
+              Public key
+            </label>
+            <div className="mt-2 flex gap-2">
+              <input
+                id={keyId}
+                type="text"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                placeholder="Base64 public key"
+                className={`${INPUT} font-mono`}
+              />
+              <Button variant="secondary" onClick={handleSave} disabled={!dirty || !key.trim()}>
+                Save
+              </Button>
+              {enforced && (
+                <Button variant="danger" onClick={handleClear}>
+                  Clear
+                </Button>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="mt-5">
+            <LockedSetting label="Public key" setting={setting} />
+          </div>
+        )}
       </GroupedBody>
     </GroupedSection>
   );

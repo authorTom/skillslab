@@ -9,6 +9,7 @@ import UpdatePage from "@/pages/UpdatePage";
 import AdminGate from "@/pages/AdminGate";
 import { isPinSet } from "@/data/adminLock";
 import { canInstallFromFiles, ContentPackage } from "@/data/contentPackage";
+import { startAutoCheck, syncAvailableUpdate } from "@/data/autoCheck";
 import BrandMark from "@/components/BrandMark";
 import Button from "@/components/Button";
 import Spinner from "@/components/Spinner";
@@ -70,10 +71,19 @@ export default function App() {
     };
   }, []);
 
+  // The quiet background check for new content starts only once the
+  // installed content has opened, so it can never hold it up.
+  const contentOpened = state !== "loading";
+  useEffect(() => {
+    if (!contentOpened) return;
+    return startAutoCheck();
+  }, [contentOpened]);
+
   const handleContentChanged = useCallback(async () => {
     setContentKey((k) => k + 1);
     setState("loading");
     setState(await openContent());
+    void syncAvailableUpdate();
   }, []);
 
   if (adminPage && !adminUnlocked && isPinSet()) {

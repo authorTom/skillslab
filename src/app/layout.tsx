@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import { connection } from "next/server";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -22,11 +23,16 @@ export const metadata: Metadata = {
     "Educational resources for procedural clinical skills: videos, storyboards, guides and images.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Render every page per request, including the 404, so each one carries the
+  // CSP nonce from src/proxy.ts. A page prerendered at build time has no nonce
+  // and its scripts would be blocked.
+  await connection();
+
   return (
     <html lang="en">
       <body

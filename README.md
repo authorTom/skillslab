@@ -56,26 +56,34 @@ LMS integration; it is a well-organised library, not a learning platform.
 
 ### With Docker (recommended)
 
-Pushes to `main` (and `v*` tags) publish a multi-arch image to GitHub Container
-Registry. The shipped `compose.yaml` pulls that prebuilt image, so you can
-deploy without cloning the repo:
+Pushes to `main` and `v*` tags publish a multi-arch image to GitHub Container
+Registry, tagged with the version for each `v*` tag (`v0.1.0` becomes `0.1.0`).
+The shipped `compose.yaml` pulls that prebuilt image, so you can deploy without
+cloning the repo:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/authorTom/skillslab/main/compose.yaml -o compose.yaml
+echo "SKILLSLAB_VERSION=0.1.0" > .env     # the release to run
 docker compose up -d
 docker compose logs app    # shows the one-time setup code
 ```
 
-Open **<http://localhost:3000/admin>**, enter the setup code from the log, and
-create your administrator account (see [Admin accounts](#admin-accounts)). Then
-replace the seeded example skills with your own.
+Open **<https://skillslab.localhost/admin>**, accept the browser's warning about
+the certificate for now (or [trust Caddy's root](#trusting-the-certificate)),
+enter the setup code from the log, and create your administrator account (see
+[Admin accounts](#admin-accounts)). Then replace the seeded example skills with
+your own. For a real server, set the hostname and certificate first:
+[Internal deployment with HTTPS](#internal-deployment-with-https).
 
 Settings go in a `.env` file next to `compose.yaml` (copy
 [`.env.example`](.env.example) and edit it) — compose reads it automatically.
 Keep that `.env` out of version control.
 
-`compose.yaml` persists `data/` in a named volume, runs an `init` process, and
-includes a healthcheck. `docker compose pull` fetches new versions.
+`compose.yaml` runs two services: the app, and [Caddy](https://caddyserver.com)
+in front of it serving HTTPS. Only Caddy is published on the host. `data/` is
+kept in a named volume, the app runs under an `init` process, and its
+healthcheck calls `GET /api/health`, which answers `ok` while the database
+does (and nothing more, so it's fine for monitoring to poll it).
 
 To build from source instead of pulling (multi-stage `Dockerfile`, Next.js
 standalone output, runs as a non-root user):
@@ -84,6 +92,10 @@ standalone output, runs as a non-root user):
 docker build -t skillslab .
 docker run -d -p 3000:3000 -v skillslab-data:/app/data skillslab
 ```
+
+That serves plain HTTP on port 3000, which is fine for trying it out. Put it
+behind HTTPS before anyone signs in over a network: the session cookie is only
+marked `Secure` when a proxy says the request arrived over HTTPS.
 
 ### From source
 
@@ -98,6 +110,156 @@ first administrator at <http://localhost:3000/admin>.
 
 For production: `npm run build && npm start`.
 
+## Internal deployment with HTTPS
+
+SkillsLab is built to run on one server on an internal network, reached by
+staff browsers and the iPad app. Sign-ins and the iPad's downloads should go
+over HTTPS, so `compose.yaml` puts Caddy in front of the app to terminate TLS.
+Caddy also:
+
+- redirects plain HTTP to HTTPS and sends `Strict-Transport-Security`;
+- passes the client's address in `X-Forwarded-For` (login throttling and the
+  audit log read it) and `X-Forwarded-Proto: https` (which makes the session
+  cookie `Secure`).
+
+The app itself is not published on any host port, so nothing can reach it
+except through Caddy.
+
+### 1. Choose the hostname
+
+Pick the name people will type, for example `skillslab.trust.internal`, and
+have it resolve to the server in your internal DNS. Put it in `.env`:
+
+```bash
+SKILLSLAB_HOSTNAME=skillslab.trust.internal
+```
+
+The default, `skillslab.localhost`, only works on the server itself and is for
+trying things out.
+
+### 2. Choose where the certificate comes from
+
+**Your organisation's internal CA** (recommended where there is one). Ask for a
+server certificate for the hostname, and put the certificate (with its
+intermediates appended, leaf first) and its private key as PEM files in a
+`certs/` folder next to `compose.yaml`:
+
+```bash
+SKILLSLAB_TLS=/certs/skillslab.crt /certs/skillslab.key
+# SKILLSLAB_CERTS_DIR=./certs     # if the folder is somewhere else
+```
+
+The folder is mounted read-only. Devices that already trust your CA (which
+managed ones usually do) need nothing more. iPads are strict about server
+certificates: the hostname must be in the certificate's Subject Alternative
+Name, it must be valid for no more than 398 days, signed with SHA-256 or
+better, with an RSA key of at least 2048 bits or an ECDSA key of at least 256.
+Renew it before it expires, replace the files and run
+`docker compose restart caddy`.
+
+**Caddy's internal CA**, for sites without one. Leave `SKILLSLAB_TLS` unset (or
+set it to `internal`). Caddy creates its own root certificate on first start and
+issues and renews the server certificate itself. Every device must then trust
+that root, below. The root lives in the `caddy-data` volume: keep the volume,
+and include it in your server backups, or devices will have to trust a new root
+after it is lost.
+
+Then start it:
+
+```bash
+docker compose up -d
+```
+
+### Trusting the certificate
+
+Staff browsers and iPads must trust whichever CA issued the certificate, or
+browsers will warn and the iPad app won't connect at all.
+
+With Caddy's internal CA, copy the root certificate off the server:
+
+```bash
+docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./skillslab-root.crt
+```
+
+- **Managed iPads and Macs:** add the root (yours or Caddy's) to a
+  *Certificate* payload in a configuration profile in your MDM and assign it.
+  Trust is granted automatically for profiles installed by MDM.
+- **Unmanaged iPads:** send the `.crt` file to the device (AirDrop or email),
+  install the downloaded profile under *Settings › General › VPN & Device
+  Management*, then switch it on under *Settings › General › About ›
+  Certificate Trust Settings*. Both steps are needed.
+- **Windows PCs:** distribute it through Group Policy to *Trusted Root
+  Certification Authorities*.
+
+### Ports
+
+Caddy listens on 443, and on 80 only to redirect. Change them with
+`HTTPS_PORT` and `HTTP_PORT` in `.env` if something else on the server already
+uses them.
+
+## Release signing
+
+The iPad app downloads content releases from the server (or installs them from
+`.skillslab` files) and only accepts packages signed with the organisation's
+key. The server signs each release as it builds it, when it has the private
+key.
+
+### Set it up once
+
+1. Generate an Ed25519 key pair on the server, in a `secrets/` folder next to
+   `compose.yaml`, readable only by the container's user (uid 1000):
+
+   ```bash
+   mkdir -p secrets
+   openssl genpkey -algorithm Ed25519 -out secrets/release-signing-key.pem
+   sudo chown 1000:1000 secrets/release-signing-key.pem
+   chmod 400 secrets/release-signing-key.pem
+   ```
+
+2. Tell the app where it is, in `.env`:
+
+   ```bash
+   RELEASE_SIGNING_KEY_FILE=/run/secrets/skillslab/release-signing-key.pem
+   ```
+
+   `compose.yaml` mounts `secrets/` read-only at `/run/secrets/skillslab`
+   (`SKILLSLAB_SECRETS_DIR` moves it). If you prefer Docker's own secrets, a
+   `secrets:` entry mounting the same file works too; only the path in
+   `RELEASE_SIGNING_KEY_FILE` matters.
+
+3. `docker compose up -d`, then open **/admin/releases**. It says whether
+   signing is on and shows the **public key**, with a button to copy it. The
+   public key goes into the iPad app's configuration (see the
+   [iPad distribution guide](docs/ipad-distribution.md)); it is not secret.
+
+From then on every release is signed before it's published, and the releases
+list marks each one *Signed* or *Unsigned*. If the key file is set but can't be
+read, building a release fails rather than publishing it unsigned, and the page
+says why. The private key is never shown, logged or sent anywhere.
+
+From a source checkout, `scripts/sign-release.mjs` does the same by hand: it
+prints the public key (`--print-public-key`), signs a built release in place
+(`--write`) and checks one (`--verify`).
+
+### Keep the key safe
+
+The key is not in the backup snapshots. Keep a copy somewhere safe and offline.
+If it's lost, generate a new one and give the iPads the new public key: an MDM
+configuration change for managed iPads, but a rebuild of the app where the key
+was built in. Releases signed with the old key show as *Signed with another
+key*; build a new one.
+
+## The iPad app
+
+`apps/ipad` is a reader app for iPads that downloads signed content releases
+from this server (built at **/admin/releases**) and works fully offline, or
+installs `.skillslab` package files from a USB drive, AirDrop or Files. It is
+distributed privately, ad hoc or as an Apple Business Manager custom app, and
+managed iPads can be given the server address and signing key by MDM. The
+[iPad distribution guide](docs/ipad-distribution.md) covers building,
+distributing and configuring it; the design is in
+[ADR 001](docs/adr/001-offline-ipad-architecture.md).
+
 ## Configuration
 
 | Variable | Default | What it does |
@@ -106,12 +268,29 @@ For production: `npm run build && npm start`.
 | `ADMIN_USERNAME` | `admin` | Username for the account `ADMIN_PASSWORD` creates. |
 | `SESSION_IDLE_HOURS` | `8` | Sign out after this long without activity. |
 | `SESSION_MAX_HOURS` | `12` | Sign out this long after signing in, however active. |
+| `RELEASE_SIGNING_KEY_FILE` | *(unset)* | Ed25519 private key (PEM) every offline release is signed with. See [Release signing](#release-signing). |
+| `BACKUP_DIR` | `backups/` (`/backups` in the image) | Where `scripts/backup.mjs` writes snapshots. |
+| `BACKUP_KEEP` | `14` | How many snapshots to keep. |
 
 Set them in `.env.local` for local development, or a `.env` beside
-`compose.yaml` for a container deployment.
+`compose.yaml` for a container deployment. `compose.yaml` also reads these,
+for the deployment itself:
 
-Uploads through the admin section are limited to 50 MB per submission,
-configured via `experimental.serverActions.bodySizeLimit` in `next.config.ts`.
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `SKILLSLAB_VERSION` | *(required)* | The release to run, e.g. `0.1.0`. See [Upgrading](#upgrading). |
+| `SKILLSLAB_HOSTNAME` | `skillslab.localhost` | The name the site is served on over HTTPS. |
+| `SKILLSLAB_TLS` | `internal` | `internal` for Caddy's own CA, or `<cert> <key>` paths under `/certs`. |
+| `SKILLSLAB_CERTS_DIR` | `./certs` | Host folder of certificate files, mounted read-only into Caddy. |
+| `SKILLSLAB_SECRETS_DIR` | `./secrets` | Host folder mounted read-only at `/run/secrets/skillslab` in the app. |
+| `SKILLSLAB_BACKUP_PATH` | `skillslab-backups` volume | Host folder or volume for backup snapshots. |
+| `HTTPS_PORT`, `HTTP_PORT` | `443`, `80` | Host ports Caddy listens on. |
+
+[`.env.example`](.env.example) lists them all with explanations.
+
+Uploads through the admin section are limited to 500 MB per file
+(`MAX_UPLOAD_MB` in `src/lib/media-types.ts`, which sets the server action body
+limit in `next.config.ts`).
 
 Everything else — skills, groups, categories, resources, thumbnails — is managed
 in the admin section.
@@ -215,7 +394,9 @@ in the media library at **/admin/media**, and courses point at it — so one PDF
 poster can serve as many courses as you like, uploaded once.
 
 - **Add files** by dragging them onto the library, or from the picker on any
-  course or resource form. PNG, JPG, GIF, WebP, AVIF, SVG and PDF are accepted.
+  course or resource form. PNG, JPG, GIF, WebP, AVIF, SVG, PDF and MP4 are
+  accepted, up to 500 MB each. SVGs are served under a policy that stops any
+  script in them from running.
 - **Organise** with folders (one per file) and tags (as many as you like), then
   filter the library by either, search names, titles and alt text, and sort by
   newest, name or size.
@@ -280,36 +461,89 @@ file moves it to the recycle bin at **/admin/trash** instead:
 | `src/lib/auth.ts` | Sessions in cookies, `requireUser` / `requireRole` guards |
 | `src/lib/users.ts`, `sessions.ts`, `passwords.ts` | Accounts and their rules, server-side sessions, scrypt hashing |
 | `src/lib/bootstrap.ts` | First administrator: setup code or `ADMIN_PASSWORD` |
-| `src/app/files/[...path]/route.ts` | Serves library files as `/files/<id>/<name>` |
+| `src/app/files/[...path]/route.ts` | Serves library files as `/files/<id>/<name>`, streamed, with range requests |
+| `src/proxy.ts`, `src/lib/csp.ts` | Content-Security-Policy with a per-request nonce; admin sign-in check |
+| `src/lib/offline/` | Offline releases for the iPad app: building, signing (`signing.mjs`), serving |
+| `src/app/api/health/route.ts` | `GET /api/health` for the container healthcheck |
+| `scripts/` | Backup and restore, admin lockout recovery, signing releases by hand |
+| `apps/ipad/` | The iPad reader app (Capacitor); see [The iPad app](#the-ipad-app) |
 | `src/lib/media.ts` | The media library: uploads, folders, tags, usage, resolving |
 | `src/lib/db.ts` | SQLite schema, migrations + first-run seed data |
 | `src/lib/data.ts` | Typed query/CRUD helpers |
 | `src/lib/trash.ts` | Recycle bin: soft-delete, restore, purge |
 | `data/` | Database and uploads (git-ignored — back this up) |
 
-## Backing up
+## Backing up and restoring
 
-Everything lives in `data/` — the SQLite database plus uploaded files.
+Everything lives in `data/`: the SQLite database, uploaded files and built
+offline releases. A snapshot holds all three.
 
-From a source checkout, snapshot it into `backups/<timestamp>/`. This is safe to
-run while the app is serving, and keeps the 14 most recent snapshots:
+Don't copy `app.db` by hand, or tar the live volume: the database runs in WAL
+mode, so a file copy taken while the app is serving can be missing recent
+changes or be corrupt. The backup script uses SQLite's online backup API, which
+is safe to run at any time, and checks the copy's integrity.
 
-```bash
-npm run backup
-```
-
-To run nightly at 02:00 via cron:
-
-```
-0 2 * * * cd /path/to/skillslab && /usr/local/bin/npm run backup
-```
-
-For a containerised deployment, snapshot the `/app/data` volume instead:
+### Taking a backup
 
 ```bash
-docker run --rm -v skillslab-data:/data -v "$PWD":/backup alpine \
-  tar czf /backup/skillslab-backup.tar.gz -C /data .
+docker compose exec app node scripts/backup.mjs    # container
+npm run backup                                     # source checkout
 ```
+
+Each run writes a snapshot folder named by the time (UTC) and keeps the 14 most
+recent. In a container they go to the `skillslab-backups` volume. A volume on
+the same disk won't survive the disk, so point `SKILLSLAB_BACKUP_PATH` in `.env`
+at a host folder on other storage (a mounted network share, say), owned by uid
+1000, the container's user. From a source checkout they go to `backups/`, or to
+`BACKUP_DIR`. `BACKUP_KEEP` changes how many are kept.
+
+To run nightly at 02:00 via cron on the server:
+
+```
+0 2 * * * cd /path/to/compose && docker compose exec -T app node scripts/backup.mjs
+```
+
+With Caddy's internal CA, also back up the `caddy-data` volume now and then:
+it holds the root certificate your devices trust (see
+[Trusting the certificate](#trusting-the-certificate)).
+
+### Restoring
+
+List the snapshots, then restore one with the app stopped:
+
+```bash
+docker compose exec app node scripts/restore.mjs          # list them
+docker compose stop app
+docker compose run --rm --no-deps app node scripts/restore.mjs 2026-11-15T02-00-00
+docker compose start app
+```
+
+From a source checkout, stop the server and run
+`node scripts/restore.mjs <snapshot>`.
+
+The restore refuses to run while the app has the database open. `--force`
+overrides that, but restart the app straight afterwards. Nothing is deleted:
+what was in `data/` is moved to `data/.pre-restore-<time>/` first, for you to
+remove once you're happy.
+
+## Upgrading
+
+The version that runs is the one in `SKILLSLAB_VERSION` in `.env`, so nothing
+changes until you choose. To upgrade:
+
+```bash
+docker compose exec app node scripts/backup.mjs    # 1. take a backup
+# 2. set SKILLSLAB_VERSION in .env to the new version
+docker compose pull                                 # 3. fetch it
+docker compose up -d                                # 4. restart on it
+```
+
+The app migrates its database on the first start of a new version, and some
+migrations are one-way. To go back, set the previous version again and
+[restore](#restoring) the backup from step 1: an older version can't be relied
+on to read a database a newer one has migrated.
+
+Read the release notes before upgrading: anything you need to do will be there.
 
 ## Licence
 

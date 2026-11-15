@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The iPad app is a separate package with its own eslint.config.js, and
+    // its build output (dist/, ios/App/App/public/) isn't source at all.
+    "apps/**",
   ]),
 ]);
 
