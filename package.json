@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
-    "next": "^16.3.5",
+    "next": "^16.4.6",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
@@ -23,14 +23,14 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "^16.3.5",
+    "eslint-config-next": "^16.4.6",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^3.2.7"
   },
   "allowScripts": {
     "better-sqlite3@12.11.1": true,
-    "sharp@0.34.5": true,
+    "sharp@0.35.5": true,
     "unrs-resolver@1.12.2": true
   }
 }
