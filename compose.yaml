@@ -15,8 +15,14 @@ services:
       # Optional: defaults are 8 hours idle and 12 hours after signing in.
       SESSION_IDLE_HOURS: ${SESSION_IDLE_HOURS:-}
       SESSION_MAX_HOURS: ${SESSION_MAX_HOURS:-}
+      # Optional: how many backup snapshots to keep (default 14).
+      BACKUP_KEEP: ${BACKUP_KEEP:-}
     volumes:
       - clinical-data:/app/data
+      # Snapshots from `docker compose exec app node scripts/backup.mjs`. A
+      # named volume by default; set SKILLSLAB_BACKUP_PATH to a host folder
+      # (ideally a mounted network share) to keep them off this server's disk.
+      - ${SKILLSLAB_BACKUP_PATH:-skillslab-backups}:/backups
     restart: unless-stopped
     init: true
     healthcheck:
@@ -74,5 +80,6 @@ configs:
 
 volumes:
   clinical-data:
+  skillslab-backups:
   caddy-data:
   caddy-config:

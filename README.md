@@ -383,29 +383,58 @@ file moves it to the recycle bin at **/admin/trash** instead:
 | `src/lib/trash.ts` | Recycle bin: soft-delete, restore, purge |
 | `data/` | Database and uploads (git-ignored — back this up) |
 
-## Backing up
+## Backing up and restoring
 
-Everything lives in `data/` — the SQLite database plus uploaded files.
+Everything lives in `data/`: the SQLite database, uploaded files and built
+offline releases. A snapshot holds all three.
 
-From a source checkout, snapshot it into `backups/<timestamp>/`. This is safe to
-run while the app is serving, and keeps the 14 most recent snapshots:
+Don't copy `app.db` by hand, or tar the live volume: the database runs in WAL
+mode, so a file copy taken while the app is serving can be missing recent
+changes or be corrupt. The backup script uses SQLite's online backup API, which
+is safe to run at any time, and checks the copy's integrity.
 
-```bash
-npm run backup
-```
-
-To run nightly at 02:00 via cron:
-
-```
-0 2 * * * cd /path/to/skillslab && /usr/local/bin/npm run backup
-```
-
-For a containerised deployment, snapshot the `/app/data` volume instead:
+### Taking a backup
 
 ```bash
-docker run --rm -v skillslab-data:/data -v "$PWD":/backup alpine \
-  tar czf /backup/skillslab-backup.tar.gz -C /data .
+docker compose exec app node scripts/backup.mjs    # container
+npm run backup                                     # source checkout
 ```
+
+Each run writes a snapshot folder named by the time (UTC) and keeps the 14 most
+recent. In a container they go to the `skillslab-backups` volume. A volume on
+the same disk won't survive the disk, so point `SKILLSLAB_BACKUP_PATH` in `.env`
+at a host folder on other storage (a mounted network share, say), owned by uid
+1000, the container's user. From a source checkout they go to `backups/`, or to
+`BACKUP_DIR`. `BACKUP_KEEP` changes how many are kept.
+
+To run nightly at 02:00 via cron on the server:
+
+```
+0 2 * * * cd /path/to/compose && docker compose exec -T app node scripts/backup.mjs
+```
+
+With Caddy's internal CA, also back up the `caddy-data` volume now and then:
+it holds the root certificate your devices trust (see
+[Trusting the certificate](#trusting-the-certificate)).
+
+### Restoring
+
+List the snapshots, then restore one with the app stopped:
+
+```bash
+docker compose exec app node scripts/restore.mjs          # list them
+docker compose stop app
+docker compose run --rm --no-deps app node scripts/restore.mjs 2026-11-15T02-00-00
+docker compose start app
+```
+
+From a source checkout, stop the server and run
+`node scripts/restore.mjs <snapshot>`.
+
+The restore refuses to run while the app has the database open. `--force`
+overrides that, but restart the app straight afterwards. Nothing is deleted:
+what was in `data/` is moved to `data/.pre-restore-<time>/` first, for you to
+remove once you're happy.
 
 ## Licence
 

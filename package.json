@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "backup": "node scripts/backup.mjs",
+    "restore": "node scripts/restore.mjs",
     "reset-admin": "node scripts/reset-admin.mjs"
   },
   "dependencies": {

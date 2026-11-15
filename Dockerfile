@@ -25,9 +25,14 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 # Lockout recovery: docker compose exec app node scripts/reset-admin.mjs <username>
 COPY --from=builder /app/scripts/reset-admin.mjs ./scripts/reset-admin.mjs
+# Backups: docker compose exec app node scripts/backup.mjs (restore.mjs to restore)
+COPY --from=builder /app/scripts/backup.mjs /app/scripts/restore.mjs /app/scripts/snapshots.mjs ./scripts/
 
 # SQLite database + uploaded files live here; mount a volume to persist them.
-RUN mkdir -p data && chown node:node data
+# Snapshots from scripts/backup.mjs go to /backups; mount somewhere off this
+# disk to keep them safe.
+ENV BACKUP_DIR=/backups
+RUN mkdir -p data /backups && chown node:node data /backups
 VOLUME /app/data
 
 USER node
