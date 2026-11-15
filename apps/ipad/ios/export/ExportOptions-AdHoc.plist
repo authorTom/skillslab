@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Ad hoc export (Xcode calls it "release-testing"): an .ipa that installs only
+  on the iPads registered in the team's developer account.
+  Used by scripts/archive.sh adhoc. See docs/ipad-distribution.md.
+-->
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>release-testing</string>
+	<key>teamID</key>
+	<string>X97G245HKP</string>
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>thinning</key>
+	<string>&lt;none&gt;</string>
+	<key>stripSwiftSymbols</key>
+	<true/>
+</dict>
+</plist>
