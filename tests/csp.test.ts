@@ -53,8 +53,12 @@ describe("proxy", () => {
     expect(run("/admin", "skillslab_session=x").status).toBe(200);
   });
 
+  it("skips Server Action calls, whose upload bodies it would otherwise buffer and cut short", () => {
+    expect(config.matcher[0].missing).toEqual([{ type: "header", key: "next-action" }]);
+  });
+
   it("leaves /files, the offline API and build assets alone", () => {
-    const matcher = new RegExp(`^${config.matcher[0].replace("/(", "/(?:")}$`);
+    const matcher = new RegExp(`^${config.matcher[0].source.replace("/(", "/(?:")}$`);
     expect(matcher.test("/skills/venepuncture")).toBe(true);
     expect(matcher.test("/admin/releases")).toBe(true);
     expect(matcher.test("/files/1/guide.pdf")).toBe(false);

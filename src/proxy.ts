@@ -33,11 +33,20 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Every page. Skipped: build assets, the favicon, the offline API (JSON
-     * and release files for the iPad) and /files, which sets its own policy
-     * per file type.
-     */
-    "/((?!_next/static|_next/image|favicon.ico|api/|files/).*)",
+    {
+      /*
+       * Every page. Skipped: build assets, the favicon, the offline API (JSON
+       * and release files for the iPad) and /files, which sets its own policy
+       * per file type.
+       */
+      source: "/((?!_next/static|_next/image|favicon.ico|api/|files/).*)",
+      /*
+       * And Server Action calls. Next buffers the body of every request the
+       * proxy sees, which would cut uploads short (and hold them in memory
+       * twice); actions check the session themselves, and their responses
+       * aren't pages that need a CSP.
+       */
+      missing: [{ type: "header", key: "next-action" }],
+    },
   ],
 };

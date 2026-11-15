@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
       // The extra megabyte covers multipart boundaries and field headers.
       bodySizeLimit: `${MAX_UPLOAD_MB + 1}mb`,
     },
+    // src/proxy.ts skips Server Action calls, but a form posted without
+    // JavaScript still passes through it, and the proxy would otherwise cut
+    // its body off at 10 MB.
+    proxyClientMaxBodySize: `${MAX_UPLOAD_MB + 1}mb`,
   },
   async headers() {
     return [
