@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "lint": "eslint src/",
+    "lint": "eslint .",
     "cap:sync": "cap sync ios",
     "cap:open": "cap open ios",
     "sim": "./scripts/run-sim.sh"
