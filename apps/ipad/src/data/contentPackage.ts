@@ -64,6 +64,11 @@ interface ContentPackagePlugin {
   cancel(): Promise<void>;
   close(options: { id: string }): Promise<void>;
   freeSpace(): Promise<{ bytes: number }>;
+  /**
+   * Ed25519 check with CryptoKit. Rejects with BAD_KEY or BAD_SIGNATURE when
+   * the key or signature is malformed.
+   */
+  verifySignature(options: { payload: string; signature: string; publicKey: string }): Promise<{ valid: boolean }>;
   /** Repeats a request natively to find out why it failed. */
   diagnoseConnection(options: { url: string }): Promise<{ problem: ConnectionProblem | "none"; code?: number; status?: number }>;
   /** The installed app's marketing version and build number. */

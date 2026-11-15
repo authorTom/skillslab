@@ -45,7 +45,8 @@ public class ContentPackagePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPicker
         CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "freeSpace", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "appInfo", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "diagnoseConnection", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "diagnoseConnection", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "verifySignature", returnType: CAPPluginReturnPromise)
     ]
 
     private static let packageType = UTType("uk.skillslab.content-package")
@@ -367,5 +368,25 @@ public class ContentPackagePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPicker
                 ])
             }
         }.resume()
+    }
+
+    /// Ed25519 check of a manifest signature (see SignatureVerifier).
+    /// Resolves `{ valid }`; rejects with BAD_KEY or BAD_SIGNATURE when either
+    /// isn't the right shape.
+    @objc func verifySignature(_ call: CAPPluginCall) {
+        guard let payload = call.getString("payload"),
+              let signature = call.getString("signature"),
+              let publicKey = call.getString("publicKey") else {
+            call.reject("payload, signature and publicKey are required.")
+            return
+        }
+        do {
+            let valid = try SignatureVerifier.verify(payload: payload, signature: signature, publicKey: publicKey)
+            call.resolve(["valid": valid])
+        } catch SignatureVerifier.Failure.badPublicKey {
+            call.reject("Configured public key is not a 32-byte Ed25519 key.", "BAD_KEY")
+        } catch {
+            call.reject("Signature is not 64 bytes.", "BAD_SIGNATURE")
+        }
     }
 }

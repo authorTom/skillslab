@@ -11,8 +11,14 @@
  *
  * The public key is a 32-byte Ed25519 key, stored as a base64 string.
  * Do not commit a real key to source control.
+ *
+ * On an iPad the check runs natively with CryptoKit (SignatureVerifier.swift
+ * in the content-package plugin), which works on every supported iOS
+ * version. WebCrypto's Ed25519 needs iOS 17, so it is only the fallback for
+ * running the app in a desktop browser with `vite` during development.
  */
 
+import { canInstallFromFiles, ContentPackage } from "./contentPackage";
 import type { ReleaseManifest } from "./types";
 
 const PUBLIC_KEY_STORAGE = "skillslab_signing_public_key";
@@ -83,6 +89,10 @@ export async function verifySignature(manifest: SignedManifest): Promise<
       return { valid: false, reason: "Signature is not 64 bytes." };
     }
 
+    if (canInstallFromFiles()) {
+      return await verifyNatively(manifest, keyB64, manifest.signature);
+    }
+
     const payload = new TextEncoder().encode(signingPayload(manifest));
 
     const cryptoKey = await crypto.subtle.importKey(
@@ -105,6 +115,24 @@ export async function verifySignature(manifest: SignedManifest): Promise<
       valid: false,
       reason: `Signature check error: ${err instanceof Error ? err.message : "unknown"}`,
     };
+  }
+}
+
+async function verifyNatively(
+  manifest: ReleaseManifest,
+  publicKey: string,
+  signature: string
+): Promise<{ valid: true } | { valid: false; reason: string }> {
+  try {
+    const { valid } = await ContentPackage.verifySignature({
+      payload: signingPayload(manifest),
+      signature,
+      publicKey,
+    });
+    return valid ? { valid: true } : { valid: false, reason: "Signature verification failed." };
+  } catch (err) {
+    const message = (err as { message?: string } | null)?.message;
+    return { valid: false, reason: message || "Signature check error: unknown" };
   }
 }
 
