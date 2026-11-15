@@ -249,6 +249,17 @@ configuration change for managed iPads, but a rebuild of the app where the key
 was built in. Releases signed with the old key show as *Signed with another
 key*; build a new one.
 
+## The iPad app
+
+`apps/ipad` is a reader app for iPads that downloads signed content releases
+from this server (built at **/admin/releases**) and works fully offline, or
+installs `.skillslab` package files from a USB drive, AirDrop or Files. It is
+distributed privately, ad hoc or as an Apple Business Manager custom app, and
+managed iPads can be given the server address and signing key by MDM. The
+[iPad distribution guide](docs/ipad-distribution.md) covers building,
+distributing and configuring it; the design is in
+[ADR 001](docs/adr/001-offline-ipad-architecture.md).
+
 ## Configuration
 
 | Variable | Default | What it does |
@@ -257,12 +268,29 @@ key*; build a new one.
 | `ADMIN_USERNAME` | `admin` | Username for the account `ADMIN_PASSWORD` creates. |
 | `SESSION_IDLE_HOURS` | `8` | Sign out after this long without activity. |
 | `SESSION_MAX_HOURS` | `12` | Sign out this long after signing in, however active. |
+| `RELEASE_SIGNING_KEY_FILE` | *(unset)* | Ed25519 private key (PEM) every offline release is signed with. See [Release signing](#release-signing). |
+| `BACKUP_DIR` | `backups/` (`/backups` in the image) | Where `scripts/backup.mjs` writes snapshots. |
+| `BACKUP_KEEP` | `14` | How many snapshots to keep. |
 
 Set them in `.env.local` for local development, or a `.env` beside
-`compose.yaml` for a container deployment.
+`compose.yaml` for a container deployment. `compose.yaml` also reads these,
+for the deployment itself:
 
-Uploads through the admin section are limited to 50 MB per submission,
-configured via `experimental.serverActions.bodySizeLimit` in `next.config.ts`.
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `SKILLSLAB_VERSION` | *(required)* | The release to run, e.g. `0.1.0`. See [Upgrading](#upgrading). |
+| `SKILLSLAB_HOSTNAME` | `skillslab.localhost` | The name the site is served on over HTTPS. |
+| `SKILLSLAB_TLS` | `internal` | `internal` for Caddy's own CA, or `<cert> <key>` paths under `/certs`. |
+| `SKILLSLAB_CERTS_DIR` | `./certs` | Host folder of certificate files, mounted read-only into Caddy. |
+| `SKILLSLAB_SECRETS_DIR` | `./secrets` | Host folder mounted read-only at `/run/secrets/skillslab` in the app. |
+| `SKILLSLAB_BACKUP_PATH` | `skillslab-backups` volume | Host folder or volume for backup snapshots. |
+| `HTTPS_PORT`, `HTTP_PORT` | `443`, `80` | Host ports Caddy listens on. |
+
+[`.env.example`](.env.example) lists them all with explanations.
+
+Uploads through the admin section are limited to 500 MB per file
+(`MAX_UPLOAD_MB` in `src/lib/media-types.ts`, which sets the server action body
+limit in `next.config.ts`).
 
 Everything else — skills, groups, categories, resources, thumbnails — is managed
 in the admin section.
@@ -366,7 +394,9 @@ in the media library at **/admin/media**, and courses point at it — so one PDF
 poster can serve as many courses as you like, uploaded once.
 
 - **Add files** by dragging them onto the library, or from the picker on any
-  course or resource form. PNG, JPG, GIF, WebP, AVIF, SVG and PDF are accepted.
+  course or resource form. PNG, JPG, GIF, WebP, AVIF, SVG, PDF and MP4 are
+  accepted, up to 500 MB each. SVGs are served under a policy that stops any
+  script in them from running.
 - **Organise** with folders (one per file) and tags (as many as you like), then
   filter the library by either, search names, titles and alt text, and sort by
   newest, name or size.
@@ -431,7 +461,12 @@ file moves it to the recycle bin at **/admin/trash** instead:
 | `src/lib/auth.ts` | Sessions in cookies, `requireUser` / `requireRole` guards |
 | `src/lib/users.ts`, `sessions.ts`, `passwords.ts` | Accounts and their rules, server-side sessions, scrypt hashing |
 | `src/lib/bootstrap.ts` | First administrator: setup code or `ADMIN_PASSWORD` |
-| `src/app/files/[...path]/route.ts` | Serves library files as `/files/<id>/<name>` |
+| `src/app/files/[...path]/route.ts` | Serves library files as `/files/<id>/<name>`, streamed, with range requests |
+| `src/proxy.ts`, `src/lib/csp.ts` | Content-Security-Policy with a per-request nonce; admin sign-in check |
+| `src/lib/offline/` | Offline releases for the iPad app: building, signing (`signing.mjs`), serving |
+| `src/app/api/health/route.ts` | `GET /api/health` for the container healthcheck |
+| `scripts/` | Backup and restore, admin lockout recovery, signing releases by hand |
+| `apps/ipad/` | The iPad reader app (Capacitor); see [The iPad app](#the-ipad-app) |
 | `src/lib/media.ts` | The media library: uploads, folders, tags, usage, resolving |
 | `src/lib/db.ts` | SQLite schema, migrations + first-run seed data |
 | `src/lib/data.ts` | Typed query/CRUD helpers |
