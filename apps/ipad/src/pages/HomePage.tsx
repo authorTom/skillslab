@@ -8,7 +8,8 @@ import SearchBar from "@/components/SearchBar";
 import BrandMark from "@/components/BrandMark";
 import Button from "@/components/Button";
 import EmptyState from "@/components/EmptyState";
-import { SearchIcon, SettingsIcon, StoryboardIcon } from "@/components/icons";
+import { SearchIcon, SettingsIcon, StoryboardIcon, DownloadIcon } from "@/components/icons";
+import { useAvailableUpdate } from "@/hooks/useAvailableUpdate";
 
 interface HomePageProps {
   navigate: (path: string) => void;
@@ -21,6 +22,7 @@ interface Section {
 }
 
 export default function HomePage({ navigate }: HomePageProps) {
+  const update = useAvailableUpdate();
   const [groups, setGroups] = useState<Group[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -272,6 +274,16 @@ export default function HomePage({ navigate }: HomePageProps) {
                   )}
                   {version && allSelected && <span>Content v{version}</span>}
                 </p>
+              )}
+              {update && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/update")}
+                  className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-full bg-accent-soft px-4 text-[0.9375rem] font-medium text-accent-ink transition active:opacity-60"
+                >
+                  <DownloadIcon className="h-4 w-4" />
+                  New content available: v{update.version}
+                </button>
               )}
             </header>
 
