@@ -45,3 +45,6 @@ next-env.d.ts
 
 # local backups of data/
 /backups
+
+# TLS certificates and keys mounted into Caddy
+/certs

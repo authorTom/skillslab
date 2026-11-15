@@ -66,16 +66,21 @@ docker compose up -d
 docker compose logs app    # shows the one-time setup code
 ```
 
-Open **<http://localhost:3000/admin>**, enter the setup code from the log, and
-create your administrator account (see [Admin accounts](#admin-accounts)). Then
-replace the seeded example skills with your own.
+Open **<https://skillslab.localhost/admin>**, accept the browser's warning about
+the certificate for now (or [trust Caddy's root](#trusting-the-certificate)),
+enter the setup code from the log, and create your administrator account (see
+[Admin accounts](#admin-accounts)). Then replace the seeded example skills with
+your own. For a real server, set the hostname and certificate first:
+[Internal deployment with HTTPS](#internal-deployment-with-https).
 
 Settings go in a `.env` file next to `compose.yaml` (copy
 [`.env.example`](.env.example) and edit it) — compose reads it automatically.
 Keep that `.env` out of version control.
 
-`compose.yaml` persists `data/` in a named volume, runs an `init` process, and
-includes a healthcheck. `docker compose pull` fetches new versions.
+`compose.yaml` runs two services: the app, and [Caddy](https://caddyserver.com)
+in front of it serving HTTPS. Only Caddy is published on the host. `data/` is
+kept in a named volume, the app runs under an `init` process, and it has a
+healthcheck.
 
 To build from source instead of pulling (multi-stage `Dockerfile`, Next.js
 standalone output, runs as a non-root user):
@@ -84,6 +89,10 @@ standalone output, runs as a non-root user):
 docker build -t skillslab .
 docker run -d -p 3000:3000 -v skillslab-data:/app/data skillslab
 ```
+
+That serves plain HTTP on port 3000, which is fine for trying it out. Put it
+behind HTTPS before anyone signs in over a network: the session cookie is only
+marked `Secure` when a proxy says the request arrived over HTTPS.
 
 ### From source
 
@@ -97,6 +106,93 @@ skills on first run, and the terminal prints a setup code for creating the
 first administrator at <http://localhost:3000/admin>.
 
 For production: `npm run build && npm start`.
+
+## Internal deployment with HTTPS
+
+SkillsLab is built to run on one server on an internal network, reached by
+staff browsers and the iPad app. Sign-ins and the iPad's downloads should go
+over HTTPS, so `compose.yaml` puts Caddy in front of the app to terminate TLS.
+Caddy also:
+
+- redirects plain HTTP to HTTPS and sends `Strict-Transport-Security`;
+- passes the client's address in `X-Forwarded-For` (login throttling and the
+  audit log read it) and `X-Forwarded-Proto: https` (which makes the session
+  cookie `Secure`).
+
+The app itself is not published on any host port, so nothing can reach it
+except through Caddy.
+
+### 1. Choose the hostname
+
+Pick the name people will type, for example `skillslab.trust.internal`, and
+have it resolve to the server in your internal DNS. Put it in `.env`:
+
+```bash
+SKILLSLAB_HOSTNAME=skillslab.trust.internal
+```
+
+The default, `skillslab.localhost`, only works on the server itself and is for
+trying things out.
+
+### 2. Choose where the certificate comes from
+
+**Your organisation's internal CA** (recommended where there is one). Ask for a
+server certificate for the hostname, and put the certificate (with its
+intermediates appended, leaf first) and its private key as PEM files in a
+`certs/` folder next to `compose.yaml`:
+
+```bash
+SKILLSLAB_TLS=/certs/skillslab.crt /certs/skillslab.key
+# SKILLSLAB_CERTS_DIR=./certs     # if the folder is somewhere else
+```
+
+The folder is mounted read-only. Devices that already trust your CA (which
+managed ones usually do) need nothing more. iPads are strict about server
+certificates: the hostname must be in the certificate's Subject Alternative
+Name, it must be valid for no more than 398 days, signed with SHA-256 or
+better, with an RSA key of at least 2048 bits or an ECDSA key of at least 256.
+Renew it before it expires, replace the files and run
+`docker compose restart caddy`.
+
+**Caddy's internal CA**, for sites without one. Leave `SKILLSLAB_TLS` unset (or
+set it to `internal`). Caddy creates its own root certificate on first start and
+issues and renews the server certificate itself. Every device must then trust
+that root, below. The root lives in the `caddy-data` volume: keep the volume,
+and include it in your server backups, or devices will have to trust a new root
+after it is lost.
+
+Then start it:
+
+```bash
+docker compose up -d
+```
+
+### Trusting the certificate
+
+Staff browsers and iPads must trust whichever CA issued the certificate, or
+browsers will warn and the iPad app won't connect at all.
+
+With Caddy's internal CA, copy the root certificate off the server:
+
+```bash
+docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./skillslab-root.crt
+```
+
+- **Managed iPads and Macs:** add the root (yours or Caddy's) to a
+  *Certificate* payload in a configuration profile in your MDM and assign it.
+  Trust is granted automatically for profiles installed by MDM.
+- **Unmanaged iPads:** send the `.crt` file to the device (AirDrop or email),
+  install the downloaded profile under *Settings › General › VPN & Device
+  Management*, then switch it on under *Settings › General › About ›
+  Certificate Trust Settings*. Both steps are needed.
+- **Windows PCs:** distribute it through Group Policy to *Trusted Root
+  Certification Authorities*.
+
+### Ports
+
+Caddy listens on 443, and on 80 only to redirect. Change them with
+`HTTPS_PORT` and `HTTP_PORT` in `.env` if something else on the server already
+uses them.
 
 ## Configuration
 
