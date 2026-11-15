@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "backup": "node scripts/backup.mjs",
     "restore": "node scripts/restore.mjs",
     "reset-admin": "node scripts/reset-admin.mjs"

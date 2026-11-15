@@ -21,6 +21,9 @@
 import { canInstallFromFiles, ContentPackage } from "./contentPackage";
 import { buildDefaults, getManagedConfig, provisioningReady, resolveSetting, type ResolvedSetting } from "./provisioning";
 import type { ReleaseManifest } from "./types";
+import { signingPayload } from "./signingPayload";
+
+export { signingPayload };
 
 const PUBLIC_KEY_STORAGE = "skillslab_signing_public_key";
 
@@ -71,19 +74,6 @@ export function isSignatureEnforced(): boolean {
   return getPublicKey().length > 0;
 }
 
-export function signingPayload(manifest: ReleaseManifest): string {
-  return [
-    manifest.format,
-    String(manifest.package_schema_version),
-    String(manifest.content_schema_version),
-    manifest.release_id,
-    manifest.release_version,
-    manifest.created_at,
-    manifest.catalogue.sha256,
-    String(manifest.catalogue.bytes),
-    ...manifest.assets.map((a) => `${a.sha256}:${a.bytes}`),
-  ].join("\n");
-}
 
 export interface SignedManifest extends ReleaseManifest {
   signature?: string;

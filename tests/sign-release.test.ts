@@ -13,7 +13,7 @@ import {
 } from "@/lib/offline/signing.mjs";
 import * as cli from "../scripts/sign-release.mjs";
 // The iPad app's copy, which verifies what the server signs.
-import { signingPayload as ipadSigningPayload } from "../apps/ipad/src/data/signature";
+import { signingPayload as ipadSigningPayload } from "../apps/ipad/src/data/signingPayload";
 import type { ReleaseManifest } from "@/lib/offline/schema";
 
 const SCRIPT = path.join(import.meta.dirname, "..", "scripts", "sign-release.mjs");

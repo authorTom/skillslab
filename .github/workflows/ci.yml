@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  web:
+    uses: ./.github/workflows/web-checks.yml
+
+  ipad:
+    name: iPad app
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/ipad
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/ipad/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      # Checks the web layer builds. It isn't distributed, so it needs no
+      # signing key; scripts/archive.sh makes the real, keyed builds.
+      - run: npm run build
+        env:
+          SKILLSLAB_ALLOW_UNSIGNED_BUILD: "1"
+
+  swift:
+    name: Native plugin (Swift tests)
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: apps/ipad/native/content-package
+    steps:
+      - uses: actions/checkout@v4
+
+      # The package is iOS-only (it links Capacitor), so its tests run on an
+      # iPad simulator. Runner images change their simulators, so take
+      # whichever iPad is available rather than naming one.
+      - name: Pick an iPad simulator
+        id: sim
+        run: |
+          udid=$(xcrun simctl list devices available -j \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r,ds in d.items() if "iOS" in r for x in ds if x["name"].startswith("iPad")))')
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        run: |
+          xcodebuild test \
+            -scheme SkillslabContentPackage \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}"

@@ -7,7 +7,13 @@ on:
   workflow_dispatch:
 
 jobs:
+  # The same lint, typecheck, tests and build as CI: no image is published
+  # unless they pass.
+  checks:
+    uses: ./.github/workflows/web-checks.yml
+
   build-and-push:
+    needs: checks
     runs-on: ubuntu-latest
     permissions:
       contents: read
