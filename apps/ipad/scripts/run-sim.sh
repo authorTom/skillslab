@@ -49,6 +49,11 @@ xcrun simctl bootstatus "$UDID" -b >/dev/null 2>&1 || xcrun simctl boot "$UDID" 
 
 if [ "$BUILD" -eq 1 ]; then
   echo "==> building web layer"
+  if [ -z "${VITE_SIGNING_PUBLIC_KEY:-}" ] && [ -z "${SKILLSLAB_ALLOW_UNSIGNED_BUILD:-}" ]; then
+    # A simulator build for development needn't have a key built in.
+    echo "    (no VITE_SIGNING_PUBLIC_KEY: building without signature enforcement)"
+    export SKILLSLAB_ALLOW_UNSIGNED_BUILD=1
+  fi
   npm run build
   echo "==> cap sync ios"
   npx cap sync ios

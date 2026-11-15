@@ -9,6 +9,9 @@
     the app calls on its own downloaded content in its container.
   - Disk space (E174.1): the content-package plugin checks free space before
     writing an installed package (availableSpace in PackageInstaller.swift).
+  - User defaults (AC6B.1): the content-package plugin reads the managed app
+    configuration an MDM sets (com.apple.configuration.managed), and nothing
+    else (ManagedConfiguration.swift).
 
   SQLCipher (for @capacitor-community/sqlite) and ZIPFoundation ship their own
   manifests; Capacitor's and Cordova's declare nothing. The app collects no
@@ -38,6 +41,14 @@
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
 				<string>E174.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>AC6B.1</string>
 			</array>
 		</dict>
 	</array>

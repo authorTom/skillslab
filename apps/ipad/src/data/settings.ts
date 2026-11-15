@@ -1,3 +1,5 @@
+import { buildDefaults, getManagedConfig, resolveSetting, type ResolvedSetting } from "./provisioning";
+
 const PREFIX = "skillslab_";
 
 function get(key: string): string {
@@ -16,10 +18,17 @@ function set(key: string, value: string): void {
   }
 }
 
-export function getServerUrl(): string {
-  return get("server_url");
+/** The server URL in use, and where it came from (see provisioning.ts). */
+export function getServerUrlSetting(): ResolvedSetting {
+  const setting = resolveSetting(getManagedConfig().serverUrl, buildDefaults().serverUrl, get("server_url"));
+  return { ...setting, value: setting.value.replace(/\/+$/, "") };
 }
 
+export function getServerUrl(): string {
+  return getServerUrlSetting().value;
+}
+
+/** Saves the address entered in the app. Ignored while one is managed or built in. */
 export function setServerUrl(url: string): void {
   set("server_url", url.replace(/\/+$/, ""));
 }

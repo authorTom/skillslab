@@ -11,6 +11,7 @@ import {
 } from "./packages";
 import { checkServerUrl, getServerUrl, getLastEtag, setLastEtag } from "./settings";
 import { explainFetchFailure } from "./connection";
+import { provisioningReady } from "./provisioning";
 import { canInstallFromFiles, ContentPackage } from "./contentPackage";
 import type { ReleaseManifest } from "./types";
 
@@ -39,6 +40,7 @@ export async function checkForUpdate(): Promise<
   | { available: true; manifest: ReleaseManifest }
   | { available: false; reason: string }
 > {
+  await provisioningReady();
   const serverUrl = getServerUrl();
   if (!serverUrl) {
     return { available: false, reason: "No server URL configured." };

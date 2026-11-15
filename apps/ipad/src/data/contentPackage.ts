@@ -69,6 +69,8 @@ interface ContentPackagePlugin {
    * the key or signature is malformed.
    */
   verifySignature(options: { payload: string; signature: string; publicKey: string }): Promise<{ valid: boolean }>;
+  /** Managed app configuration from the MDM: only the keys that are set. */
+  managedConfig(): Promise<{ serverUrl?: string; signingPublicKey?: string }>;
   /** Repeats a request natively to find out why it failed. */
   diagnoseConnection(options: { url: string }): Promise<{ problem: ConnectionProblem | "none"; code?: number; status?: number }>;
   /** The installed app's marketing version and build number. */

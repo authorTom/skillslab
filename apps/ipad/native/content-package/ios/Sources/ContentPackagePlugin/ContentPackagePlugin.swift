@@ -46,7 +46,8 @@ public class ContentPackagePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPicker
         CAPPluginMethod(name: "freeSpace", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "appInfo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "diagnoseConnection", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "verifySignature", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "verifySignature", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "managedConfig", returnType: CAPPluginReturnPromise)
     ]
 
     private static let packageType = UTType("uk.skillslab.content-package")
@@ -388,5 +389,11 @@ public class ContentPackagePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPicker
         } catch {
             call.reject("Signature is not 64 bytes.", "BAD_SIGNATURE")
         }
+    }
+
+    /// The MDM's managed app configuration (see ManagedConfiguration). The
+    /// app asks again whenever it returns to the foreground.
+    @objc func managedConfig(_ call: CAPPluginCall) {
+        call.resolve(ManagedConfiguration.read())
     }
 }

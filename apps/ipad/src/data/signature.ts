@@ -19,11 +19,12 @@
  */
 
 import { canInstallFromFiles, ContentPackage } from "./contentPackage";
+import { buildDefaults, getManagedConfig, provisioningReady, resolveSetting, type ResolvedSetting } from "./provisioning";
 import type { ReleaseManifest } from "./types";
 
 const PUBLIC_KEY_STORAGE = "skillslab_signing_public_key";
 
-export function getPublicKey(): string {
+function storedPublicKey(): string {
   try {
     return localStorage.getItem(PUBLIC_KEY_STORAGE) ?? "";
   } catch {
@@ -31,7 +32,30 @@ export function getPublicKey(): string {
   }
 }
 
+/** The public key in use, and where it came from (see provisioning.ts). */
+export function getPublicKeySetting(): ResolvedSetting {
+  return resolveSetting(getManagedConfig().signingPublicKey, buildDefaults().signingPublicKey, storedPublicKey());
+}
+
+export function getPublicKey(): string {
+  return getPublicKeySetting().value;
+}
+
+/** True when the key can be set or cleared in the app. */
+export function canEditPublicKey(): boolean {
+  const { source } = getPublicKeySetting();
+  return source === null || source === "app";
+}
+
+/**
+ * Sets or clears the key entered in the app. Refused when the key comes from
+ * managed configuration or the build, so enforcement can't be switched off
+ * on the device.
+ */
 export function setPublicKey(base64Key: string): void {
+  if (!canEditPublicKey()) {
+    throw new Error("The signing key is set by your organisation and can’t be changed on this iPad.");
+  }
   try {
     if (base64Key) {
       localStorage.setItem(PUBLIC_KEY_STORAGE, base64Key);
@@ -69,6 +93,8 @@ export async function verifySignature(manifest: SignedManifest): Promise<
   | { valid: true }
   | { valid: false; reason: string }
 > {
+  // Never check against the in-app key before the MDM's has been read.
+  await provisioningReady();
   const keyB64 = getPublicKey();
   if (!keyB64) {
     return { valid: true };
