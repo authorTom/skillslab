@@ -1,15 +1,20 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+// The one signing implementation, shared by the server and the CLI script.
 import {
   signingPayload,
   signManifest,
   verifyManifest,
   publicKeyBase64,
-} from "../scripts/sign-release.mjs";
+} from "@/lib/offline/signing.mjs";
+import * as cli from "../scripts/sign-release.mjs";
+// The iPad app's copy, which verifies what the server signs.
+import { signingPayload as ipadSigningPayload } from "../apps/ipad/src/data/signature";
+import type { ReleaseManifest } from "@/lib/offline/schema";
 
 const SCRIPT = path.join(import.meta.dirname, "..", "scripts", "sign-release.mjs");
 
@@ -73,6 +78,27 @@ describe("sign-release signingPayload", () => {
     const withSig = { ...manifest, signature: "irrelevant" };
     expect(signingPayload(withSig)).toBe(signingPayload(manifest));
   });
+
+  it("is byte-identical to the payload the iPad app builds", () => {
+    const manifests = [
+      makeManifest(),
+      makeManifest({ assets: [] }),
+      makeManifest({
+        release_version: "2.0.0 – Ünïcode",
+        assets: Array.from({ length: 5 }, (_, i) => ({
+          media_id: i, path: `assets/${i}`, mime: "image/png", bytes: i * 1000, sha256: `h${i}`,
+        })),
+      }),
+    ];
+    for (const manifest of manifests) {
+      expect(ipadSigningPayload(manifest)).toBe(signingPayload(manifest));
+    }
+  });
+
+  it("is what the CLI script signs with", () => {
+    expect(cli.signingPayload).toBe(signingPayload);
+    expect(cli.signManifest).toBe(signManifest);
+  });
 });
 
 describe("sign-release signing", () => {
@@ -104,8 +130,7 @@ describe("sign-release signing", () => {
 
   it("rejects an unsigned manifest", () => {
     const result = verifyManifest(makeManifest(), publicKeyBase64(keypairPem()));
-    expect(result.valid).toBe(false);
-    expect(result.reason).toContain("unsigned");
+    expect(result).toMatchObject({ valid: false, reason: expect.stringContaining("unsigned") });
   });
 
   it("refuses a non-Ed25519 key", () => {
@@ -141,6 +166,100 @@ describe("sign-release CLI", () => {
       expect(out).toContain("OK");
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("server-side signing", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillslab-signing-"));
+  const keyFile = path.join(dir, "release-signing-key.pem");
+  const pem = keypairPem();
+  fs.writeFileSync(keyFile, pem);
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  async function load() {
+    vi.resetModules();
+    return import("@/lib/offline/release-signing");
+  }
+
+  it("is off without RELEASE_SIGNING_KEY_FILE", async () => {
+    vi.stubEnv("RELEASE_SIGNING_KEY_FILE", "");
+    const signing = await load();
+    expect(signing.signingStatus()).toEqual({ state: "off" });
+    expect(signing.signatureFor(makeManifest() as ReleaseManifest)).toBeNull();
+  });
+
+  it("shows only the public key, and signs what the iPad will verify", async () => {
+    vi.stubEnv("RELEASE_SIGNING_KEY_FILE", keyFile);
+    const signing = await load();
+    const status = signing.signingStatus();
+    expect(status).toEqual({ state: "ready", publicKey: publicKeyBase64(pem) });
+    expect(JSON.stringify(status)).not.toContain("PRIVATE KEY");
+
+    const manifest = makeManifest() as ReleaseManifest;
+    const signature = signing.signatureFor(manifest)!;
+    expect(verifyManifest({ ...manifest, signature }, publicKeyBase64(pem))).toEqual({ valid: true });
+    expect(signing.releaseSignature({ ...manifest, signature }, status)).toBe("signed");
+    expect(signing.releaseSignature(manifest, status)).toBe("unsigned");
+    const other = signManifest(manifest, keypairPem());
+    expect(signing.releaseSignature({ ...manifest, signature: other }, status)).toBe("other-key");
+  });
+
+  it("refuses to sign, without revealing the key, when the file is unusable", async () => {
+    const rsa = path.join(dir, "rsa.pem");
+    fs.writeFileSync(
+      rsa,
+      crypto.generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({ type: "pkcs8", format: "pem" })
+    );
+    const garbage = path.join(dir, "garbage.pem");
+    fs.writeFileSync(garbage, "-----BEGIN PRIVATE KEY-----\nsecret-material\n-----END PRIVATE KEY-----\n");
+
+    for (const [file, expected] of [
+      [path.join(dir, "missing.pem"), "doesn't exist"],
+      [rsa, "Ed25519"],
+      [garbage, "isn't an Ed25519 private key"],
+    ]) {
+      vi.stubEnv("RELEASE_SIGNING_KEY_FILE", file);
+      const signing = await load();
+      const status = signing.signingStatus();
+      expect(status.state).toBe("error");
+      expect(JSON.stringify(status)).toContain(expected);
+      expect(JSON.stringify(status)).not.toContain("secret-material");
+      expect(() => signing.signatureFor(makeManifest() as ReleaseManifest)).toThrow(expected);
+    }
+  });
+
+  it("signs a real release as it is built, before it is published", async () => {
+    // A fresh data/ in a temporary directory: getDb() seeds the demo courses.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillslab-build-"));
+    const cwd = process.cwd();
+    process.chdir(root);
+    try {
+      vi.stubEnv("RELEASE_SIGNING_KEY_FILE", keyFile);
+      vi.resetModules();
+      delete globalThis.__clinicalSkillsDb;
+      const { buildRelease } = await import("@/lib/offline/export");
+      const result = await buildRelease({ version: "1.0.0", vimeoPolicy: "permissive" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const written = JSON.parse(fs.readFileSync(path.join(result.archivePath, "manifest.json"), "utf8"));
+      expect(written.signature).toBeTruthy();
+      expect(verifyManifest(written, publicKeyBase64(pem))).toEqual({ valid: true });
+
+      // A key that can't be used fails the build and publishes nothing.
+      vi.stubEnv("RELEASE_SIGNING_KEY_FILE", path.join(dir, "missing.pem"));
+      await expect(buildRelease({ version: "1.0.1", vimeoPolicy: "permissive" })).rejects.toThrow("doesn't exist");
+      const published = fs.readdirSync(path.join(root, "data", "releases")).filter((n) => !n.startsWith("."));
+      expect(published).toEqual([result.releaseId]);
+    } finally {
+      globalThis.__clinicalSkillsDb?.close();
+      delete globalThis.__clinicalSkillsDb;
+      process.chdir(cwd);
+      fs.rmSync(root, { recursive: true, force: true });
     }
   });
 });

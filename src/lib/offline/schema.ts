@@ -102,6 +102,11 @@ export interface ReleaseManifest {
     resources: number;
     assets: number;
   };
+  /**
+   * Base64 Ed25519 signature over signingPayload() in ./signing.mjs. Present
+   * when the server had a signing key as the release was built.
+   */
+  signature?: string;
   min_app_content_schema_version: number;
 }
 

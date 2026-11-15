@@ -10,3 +10,5 @@ docker-compose.yml
 README.md
 apps
 certs
+secrets
+tests

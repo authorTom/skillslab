@@ -17,12 +17,18 @@ services:
       SESSION_MAX_HOURS: ${SESSION_MAX_HOURS:-}
       # Optional: how many backup snapshots to keep (default 14).
       BACKUP_KEEP: ${BACKUP_KEEP:-}
+      # Optional but recommended: an Ed25519 private key (PEM) to sign every
+      # offline release with, e.g. /run/secrets/skillslab/release-signing-key.pem.
+      # See "Release signing" in the README.
+      RELEASE_SIGNING_KEY_FILE: ${RELEASE_SIGNING_KEY_FILE:-}
     volumes:
       - clinical-data:/app/data
       # Snapshots from `docker compose exec app node scripts/backup.mjs`. A
       # named volume by default; set SKILLSLAB_BACKUP_PATH to a host folder
       # (ideally a mounted network share) to keep them off this server's disk.
       - ${SKILLSLAB_BACKUP_PATH:-skillslab-backups}:/backups
+      # Secrets such as the release signing key, read-only.
+      - ${SKILLSLAB_SECRETS_DIR:-./secrets}:/run/secrets/skillslab:ro
     restart: unless-stopped
     init: true
     healthcheck:

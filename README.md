@@ -194,6 +194,58 @@ Caddy listens on 443, and on 80 only to redirect. Change them with
 `HTTPS_PORT` and `HTTP_PORT` in `.env` if something else on the server already
 uses them.
 
+## Release signing
+
+The iPad app downloads content releases from the server (or installs them from
+`.skillslab` files) and only accepts packages signed with the organisation's
+key. The server signs each release as it builds it, when it has the private
+key.
+
+### Set it up once
+
+1. Generate an Ed25519 key pair on the server, in a `secrets/` folder next to
+   `compose.yaml`, readable only by the container's user (uid 1000):
+
+   ```bash
+   mkdir -p secrets
+   openssl genpkey -algorithm Ed25519 -out secrets/release-signing-key.pem
+   sudo chown 1000:1000 secrets/release-signing-key.pem
+   chmod 400 secrets/release-signing-key.pem
+   ```
+
+2. Tell the app where it is, in `.env`:
+
+   ```bash
+   RELEASE_SIGNING_KEY_FILE=/run/secrets/skillslab/release-signing-key.pem
+   ```
+
+   `compose.yaml` mounts `secrets/` read-only at `/run/secrets/skillslab`
+   (`SKILLSLAB_SECRETS_DIR` moves it). If you prefer Docker's own secrets, a
+   `secrets:` entry mounting the same file works too; only the path in
+   `RELEASE_SIGNING_KEY_FILE` matters.
+
+3. `docker compose up -d`, then open **/admin/releases**. It says whether
+   signing is on and shows the **public key**, with a button to copy it. The
+   public key goes into the iPad app's configuration (see the
+   [iPad distribution guide](docs/ipad-distribution.md)); it is not secret.
+
+From then on every release is signed before it's published, and the releases
+list marks each one *Signed* or *Unsigned*. If the key file is set but can't be
+read, building a release fails rather than publishing it unsigned, and the page
+says why. The private key is never shown, logged or sent anywhere.
+
+From a source checkout, `scripts/sign-release.mjs` does the same by hand: it
+prints the public key (`--print-public-key`), signs a built release in place
+(`--write`) and checks one (`--verify`).
+
+### Keep the key safe
+
+The key is not in the backup snapshots. Keep a copy somewhere safe and offline.
+If it's lost, generate a new one and give the iPads the new public key: an MDM
+configuration change for managed iPads, but a rebuild of the app where the key
+was built in. Releases signed with the old key show as *Signed with another
+key*; build a new one.
+
 ## Configuration
 
 | Variable | Default | What it does |

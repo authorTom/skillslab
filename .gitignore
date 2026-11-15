@@ -48,3 +48,6 @@ next-env.d.ts
 
 # TLS certificates and keys mounted into Caddy
 /certs
+
+# Private keys and other secrets mounted into the app
+/secrets

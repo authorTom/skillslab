@@ -10,6 +10,7 @@ export interface ReleaseSummary {
   counts: ReleaseManifest["counts"];
   totalBytes: number;
   current: boolean;
+  manifest: ReleaseManifest;
 }
 
 const CURRENT_FILE = path.join(RELEASES_DIR, ".current");
@@ -53,6 +54,7 @@ export function listReleases(): ReleaseSummary[] {
       counts: manifest.counts,
       totalBytes: manifest.total_uncompressed_bytes,
       current: manifest.release_id === currentId,
+      manifest,
     });
   }
 
