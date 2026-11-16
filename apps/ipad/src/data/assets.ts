@@ -50,3 +50,20 @@ export async function assetFileExists(assetPath: string): Promise<boolean> {
     return false;
   }
 }
+
+/** The app's streaming scheme for video, registered in MediaSchemeHandler.swift. */
+export const MEDIA_SCHEME = "skillslab-media";
+
+/**
+ * URL for playing a video from the content package. On iOS this goes through
+ * the app's own streaming handler, which serves byte ranges without loading
+ * the file into memory; elsewhere it's the same as assetUrl.
+ */
+export function mediaUrl(assetPath: string | null, platform = Capacitor.getPlatform()): string {
+  if (!assetPath) return "";
+  if (platform === "ios") {
+    const path = assetPath.split("/").map(encodeURIComponent).join("/");
+    return `${MEDIA_SCHEME}://localhost/${path}`;
+  }
+  return assetUrl(assetPath);
+}
