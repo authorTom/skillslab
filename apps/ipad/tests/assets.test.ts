@@ -24,3 +24,20 @@ describe("assetUrl", () => {
     }
   });
 });
+
+describe("mediaUrl", () => {
+  it("serves iOS video through the streaming scheme, relative to the content folder", async () => {
+    const { mediaUrl } = await import("@/data/assets");
+    expect(mediaUrl("assets/abc123.mp4", "ios")).toBe("skillslab-media://localhost/assets/abc123.mp4");
+  });
+
+  it("encodes each path segment", async () => {
+    const { mediaUrl } = await import("@/data/assets");
+    expect(mediaUrl("assets/my clip#1.mp4", "ios")).toBe("skillslab-media://localhost/assets/my%20clip%231.mp4");
+  });
+
+  it("returns an empty string without an asset", async () => {
+    const { mediaUrl } = await import("@/data/assets");
+    expect(mediaUrl(null, "ios")).toBe("");
+  });
+});
