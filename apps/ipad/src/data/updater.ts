@@ -13,6 +13,8 @@ import { checkServerUrl, getServerUrl, getLastEtag, setLastEtag } from "./settin
 import { explainFetchFailure } from "./connection";
 import { provisioningReady } from "./provisioning";
 import { canInstallFromFiles, ContentPackage } from "./contentPackage";
+import { hasEnoughSpace, SPACE_MARGIN } from "./fileInstall";
+import { formatBytes } from "./format";
 import type { ReleaseManifest } from "./types";
 
 export interface UpdateProgress {
@@ -134,6 +136,8 @@ export async function downloadAndActivate(
   }
 
   const totalBytes = filesToDownload.reduce((sum, f) => sum + f.bytes, 0);
+  const spaceError = await checkSpaceFor(totalBytes);
+  if (spaceError) return { ok: false, error: spaceError };
   let bytesDownloaded = 0;
 
   onProgress({
@@ -217,6 +221,23 @@ export async function downloadAndActivate(
   setLastEtag(`"${manifest.release_id}"`);
 
   return { ok: true, manifest };
+}
+
+/**
+ * Why the update can't fit on this iPad, or null when it can (or free space
+ * can't be read, in which case the download is tried anyway). Files are
+ * moved into place after downloading, so they need room only once.
+ */
+export async function checkSpaceFor(bytes: number): Promise<string | null> {
+  if (!canInstallFromFiles()) return null;
+  let freeBytes: number;
+  try {
+    ({ bytes: freeBytes } = await ContentPackage.freeSpace());
+  } catch {
+    return null;
+  }
+  if (hasEnoughSpace({ copyBytes: bytes, freeBytes })) return null;
+  return `This update needs ${formatBytes(bytes)}, plus ${formatBytes(SPACE_MARGIN)} to spare, but this iPad has ${formatBytes(freeBytes)} free. Free up some space and try again.`;
 }
 
 async function downloadToStaging(
