@@ -11,7 +11,7 @@ import PinPad from "@/components/PinPad";
 import ContentCheck from "@/components/ContentCheck";
 import { canInstallFromFiles } from "@/data/contentPackage";
 import { formatDate } from "@/data/format";
-import { formatAppVersion, getAppVersion } from "@/data/appInfo";
+import { formatAppVersion, getAppVersion, TRAINING_NOTICE } from "@/data/appInfo";
 import { GroupedBody, GroupedSection, InfoList, InfoRow, NavRow, Notice } from "@/components/Grouped";
 import { CheckCircleIcon, LockIcon, RefreshIcon } from "@/components/icons";
 
@@ -108,7 +108,7 @@ export default function SettingsPage({ back, navigate }: SettingsPageProps) {
 
         <AdminLockSection />
 
-        <GroupedSection title="About">
+        <GroupedSection title="About" footer={TRAINING_NOTICE}>
           <InfoList>
             <InfoRow label="App" value="SkillsLab Reader" />
             <InfoRow label="Version" value={appVersion ?? "…"} mono />

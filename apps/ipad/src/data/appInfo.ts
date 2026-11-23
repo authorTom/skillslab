@@ -1,5 +1,9 @@
 import { ContentPackage, canInstallFromFiles } from "./contentPackage";
 
+/** Shown under the library and in Settings › About. */
+export const TRAINING_NOTICE =
+  "For education and simulation training. It supports, but doesn’t replace, local clinical policy, supervision and professional judgement.";
+
 export interface AppVersion {
   version: string;
   build: string | null;
