@@ -57,13 +57,13 @@ LMS integration; it is a well-organised library, not a learning platform.
 ### With Docker (recommended)
 
 Pushes to `main` and `v*` tags publish a multi-arch image to GitHub Container
-Registry, tagged with the version for each `v*` tag (`v0.1.0` becomes `0.1.0`).
+Registry, tagged with the version for each `v*` tag (`v1.0.0` becomes `1.0.0`).
 The shipped `compose.yaml` pulls that prebuilt image, so you can deploy without
 cloning the repo:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/authorTom/skillslab/main/compose.yaml -o compose.yaml
-echo "SKILLSLAB_VERSION=0.1.0" > .env     # the release to run
+echo "SKILLSLAB_VERSION=1.0.0" > .env     # the release to run
 docker compose up -d
 docker compose logs app    # shows the one-time setup code
 ```
@@ -260,6 +260,9 @@ managed iPads can be given the server address and signing key by MDM. The
 distributing and configuring it; the design is in
 [ADR 001](docs/adr/001-offline-ipad-architecture.md).
 
+[Going live](docs/go-live.md) lists every step from this repository to iPads
+in use, server and app together, in order.
+
 ## Configuration
 
 | Variable | Default | What it does |
@@ -271,6 +274,8 @@ distributing and configuring it; the design is in
 | `RELEASE_SIGNING_KEY_FILE` | *(unset)* | Ed25519 private key (PEM) every offline release is signed with. See [Release signing](#release-signing). |
 | `BACKUP_DIR` | `backups/` (`/backups` in the image) | Where `scripts/backup.mjs` writes snapshots. |
 | `BACKUP_KEEP` | `14` | How many snapshots to keep. |
+| `BACKUP_TIME` | `02:00` | When the `backups` service takes its nightly snapshot (`HH:MM`, in `TZ`). |
+| `TZ` | `UTC` | Time zone for `BACKUP_TIME`, e.g. `Europe/London`. |
 
 Set them in `.env.local` for local development, or a `.env` beside
 `compose.yaml` for a container deployment. `compose.yaml` also reads these,
@@ -278,7 +283,7 @@ for the deployment itself:
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `SKILLSLAB_VERSION` | *(required)* | The release to run, e.g. `0.1.0`. See [Upgrading](#upgrading). |
+| `SKILLSLAB_VERSION` | *(required)* | The release to run, e.g. `1.0.0`. See [Upgrading](#upgrading). |
 | `SKILLSLAB_HOSTNAME` | `skillslab.localhost` | The name the site is served on over HTTPS. |
 | `SKILLSLAB_TLS` | `internal` | `internal` for Caddy's own CA, or `<cert> <key>` paths under `/certs`. |
 | `SKILLSLAB_CERTS_DIR` | `./certs` | Host folder of certificate files, mounted read-only into Caddy. |
@@ -497,10 +502,20 @@ at a host folder on other storage (a mounted network share, say), owned by uid
 1000, the container's user. From a source checkout they go to `backups/`, or to
 `BACKUP_DIR`. `BACKUP_KEEP` changes how many are kept.
 
-To run nightly at 02:00 via cron on the server:
+With `docker compose`, the `backups` service takes one every night at 02:00
+UTC, with nothing to set up. `BACKUP_TIME` in `.env` changes the time (`HH:MM`)
+and `TZ` the time zone it's in (for example `TZ=Europe/London`). Its log says
+when the next one is due and whether the last one worked:
+
+```bash
+docker compose logs backups
+```
+
+From a source checkout, schedule `npm run backup` yourself, for example nightly
+at 02:00 with cron:
 
 ```
-0 2 * * * cd /path/to/compose && docker compose exec -T app node scripts/backup.mjs
+0 2 * * * cd /path/to/skillslab && npm run backup
 ```
 
 With Caddy's internal CA, also back up the `caddy-data` volume now and then:
@@ -513,9 +528,9 @@ List the snapshots, then restore one with the app stopped:
 
 ```bash
 docker compose exec app node scripts/restore.mjs          # list them
-docker compose stop app
+docker compose stop app backups
 docker compose run --rm --no-deps app node scripts/restore.mjs 2026-11-15T02-00-00
-docker compose start app
+docker compose start app backups
 ```
 
 From a source checkout, stop the server and run
