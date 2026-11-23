@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import type { Resource, StoryboardFrame } from "@/data/types";
-import { assetUrl } from "@/data/assets";
+import { assetUrl, mediaUrl } from "@/data/assets";
 import { listStoryboardFrames, getMedia } from "@/data/catalogue";
 import Card from "./Card";
 import Button, { buttonClass } from "./Button";
@@ -265,23 +265,54 @@ function VimeoPanel({ resource }: { resource: Resource }) {
   );
 }
 
+type WebKitVideo = HTMLVideoElement & {
+  webkitEnterFullscreen?: () => void;
+  webkitDisplayingFullscreen?: boolean;
+};
+
 function LocalVideoPanel({ resource }: { resource: Resource }) {
-  const video = useRef<HTMLVideoElement>(null);
-  const src = assetUrl(resource.asset);
+  const video = useRef<WebKitVideo>(null);
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const src = mediaUrl(resource.asset);
+
+  // Switching resource or leaving the skill unmounts the player. WebKit can
+  // keep a detached video playing (and its file request open) until it's
+  // collected, so stop it and drop the source on the way out.
+  useEffect(() => {
+    const v = video.current;
+    return () => {
+      if (!v) return;
+      v.pause();
+      v.removeAttribute("src");
+      v.load();
+    };
+  }, [src]);
+
   if (!src) return <MissingPanel />;
 
   // iOS's own full-screen player, entered directly. It works whatever the
   // page around the video looks like, unlike the inline control's element
   // full screen, which WebKit can fail to enter from inside styled layouts.
+  // iOS refuses it until the video's metadata has loaded, so the button
+  // waits for that.
   function enterFullScreen() {
-    const v = video.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
-    if (!v) return;
+    const v = video.current;
+    if (!v || v.webkitDisplayingFullscreen || document.fullscreenElement) return;
     try {
       if (v.webkitEnterFullscreen) v.webkitEnterFullscreen();
-      else void v.requestFullscreen();
+      else void v.requestFullscreen().catch(() => {});
     } catch {
       void v.requestFullscreen?.().catch(() => {});
     }
+  }
+
+  if (failed) {
+    return (
+      <EmptyState outlined icon={<DocumentIcon className="h-7 w-7" />} title="Can’t play this video">
+        The video file couldn’t be read. Installing the latest content update may fix it.
+      </EmptyState>
+    );
   }
 
   return (
@@ -294,13 +325,20 @@ function LocalVideoPanel({ resource }: { resource: Resource }) {
         controls
         playsInline
         preload="metadata"
+        onLoadedMetadata={() => setReady(true)}
+        onError={() => setFailed(true)}
         className="aspect-video w-full rounded-[1.5rem] bg-black shadow-raised"
         title={resource.title}
       >
         Your device can’t play this video.
       </video>
       <MediaLabel resource={resource}>
-        <Button variant="tinted" icon={<ExpandIcon className="h-4 w-4" />} onClick={enterFullScreen}>
+        <Button
+          variant="tinted"
+          icon={<ExpandIcon className="h-4 w-4" />}
+          onClick={enterFullScreen}
+          disabled={!ready}
+        >
           Full screen
         </Button>
       </MediaLabel>
