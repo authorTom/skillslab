@@ -1,7 +1,8 @@
 # Distributing the iPad app
 
 The SkillsLab iPad app is not on the public App Store. There are two ways to
-get it onto your iPads:
+get it onto your iPads. (For the whole launch, server included, follow
+[Going live](go-live.md).)
 
 | | **Ad hoc** | **Apple Business Manager custom app** |
 | --- | --- | --- |
@@ -142,10 +143,11 @@ as its debug symbols make crash reports readable.
      from a file. Attach a signed `.skillslab` package from
      **/admin/releases** (*Download package*), built from demo content, so
      they can try it without network access.
-   - *Export compliance*: the app uses HTTPS and verifies signatures, which
-     counts as exempt encryption. Answer the questions when you upload, or add
-     `ITSAppUsesNonExemptEncryption` = `NO` to `Info.plist` once your
-     organisation has confirmed that's the right answer.
+   - *Export compliance*: the app only uses the encryption built into iOS
+     (HTTPS, and Ed25519 and SHA-256 to check packages), which is exempt, so
+     `Info.plist` sets `ITSAppUsesNonExemptEncryption` to `NO` and App Store
+     Connect asks nothing on upload. If your organisation's export-control
+     advice differs, remove the key and answer the questions instead.
 4. **Upload.** Export with `./scripts/archive.sh abm`, then send
    `build/abm/App.ipa` with Apple's Transporter app. (Or set `destination` to
    `upload` in `ExportOptions-AppStoreConnect.plist` and the script uploads it

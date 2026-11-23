@@ -10,6 +10,7 @@ import Button from "@/components/Button";
 import EmptyState from "@/components/EmptyState";
 import { SearchIcon, SettingsIcon, StoryboardIcon, DownloadIcon } from "@/components/icons";
 import { useAvailableUpdate } from "@/hooks/useAvailableUpdate";
+import { TRAINING_NOTICE } from "@/data/appInfo";
 
 interface HomePageProps {
   navigate: (path: string) => void;
@@ -350,6 +351,10 @@ export default function HomePage({ navigate }: HomePageProps) {
                   />
                 ))}
               </div>
+            )}
+
+            {loaded && (
+              <p className="mt-20 max-w-xl text-[0.8125rem] leading-relaxed text-ink-3 text-pretty">{TRAINING_NOTICE}</p>
             )}
           </div>
         </main>

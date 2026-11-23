@@ -1,9 +1,9 @@
 services:
   app:
-    # The release to run, from SKILLSLAB_VERSION in .env (e.g. 0.1.0 for the
-    # git tag v0.1.0). Pinned so an upgrade only happens when you choose: see
+    # The release to run, from SKILLSLAB_VERSION in .env (e.g. 1.0.0 for the
+    # git tag v1.0.0). Pinned so an upgrade only happens when you choose: see
     # "Upgrading" in the README.
-    image: ghcr.io/authortom/skillslab:${SKILLSLAB_VERSION:?Set SKILLSLAB_VERSION in .env to the release to run, e.g. 0.1.0}
+    image: ghcr.io/authortom/skillslab:${SKILLSLAB_VERSION:?Set SKILLSLAB_VERSION in .env to the release to run, e.g. 1.0.0}
     # Not published on the host: everything goes through Caddy below, which
     # terminates HTTPS. The app is reachable only on the compose network.
     expose:
@@ -44,6 +44,26 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  # Takes a snapshot every night (BACKUP_TIME, default 02:00 in TZ, default
+  # UTC) with scripts/backup.mjs, which is safe while the app is serving. Same
+  # image, data and backup folder as the app. See "Backing up and restoring"
+  # in the README.
+  backups:
+    image: ghcr.io/authortom/skillslab:${SKILLSLAB_VERSION:?Set SKILLSLAB_VERSION in .env to the release to run, e.g. 1.0.0}
+    command: ["node", "scripts/backup-daily.mjs"]
+    environment:
+      BACKUP_TIME: ${BACKUP_TIME:-}
+      BACKUP_KEEP: ${BACKUP_KEEP:-}
+      TZ: ${TZ:-}
+    volumes:
+      - clinical-data:/app/data
+      - ${SKILLSLAB_BACKUP_PATH:-skillslab-backups}:/backups
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
 
   # Terminates HTTPS for SKILLSLAB_HOSTNAME and proxies to the app. Caddy sets
   # X-Forwarded-For (the client's address, which login throttling and the

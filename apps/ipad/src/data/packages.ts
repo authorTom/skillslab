@@ -151,6 +151,94 @@ export async function readInstalledManifest(): Promise<ReleaseManifest | null> {
   }
 }
 
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await Filesystem.stat({ path, directory: Directory.Documents });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Move each staged asset into the content folder, replacing any damaged copy
+ * there, and check that every asset the release needs is present. Moving
+ * rather than copying means a large video needs room on the iPad once, not
+ * twice.
+ */
+async function placeAssets(manifest: ReleaseManifest): Promise<void> {
+  await ensureDir(ASSETS_SUBDIR, Directory.Documents);
+  const paths = [...new Set(manifest.assets.map((a) => a.path))];
+  for (const path of paths) {
+    const staged = `${STAGING_DIR}/${path}`;
+    const active = `${CONTENT_DIR}/${path}`;
+    if (await fileExists(staged)) {
+      await Filesystem.deleteFile({ path: active, directory: Directory.Documents }).catch(() => {});
+      await Filesystem.rename({
+        from: staged,
+        to: active,
+        directory: Directory.Documents,
+        toDirectory: Directory.Documents,
+      });
+    } else if (!(await fileExists(active))) {
+      throw new Error(`${path} is missing from the content, so it wasn’t installed. Try again.`);
+    }
+  }
+}
+
+/**
+ * The files in the assets folder that no kept release uses. Returns nothing
+ * when `keep` is null, which means a kept release's file list is unknown and
+ * nothing can safely be deleted.
+ */
+export function assetsToPrune(fileNames: string[], keep: ReleaseManifest[] | null): string[] {
+  if (!keep) return [];
+  const used = new Set(keep.flatMap((m) => m.assets.map((a) => a.path.replace(/^assets\//, ""))));
+  return fileNames.filter((name) => !used.has(name));
+}
+
+/** The previous release's manifest, if it's on the iPad and really is that release's. */
+async function readPreviousManifest(releaseId: string): Promise<ReleaseManifest | null> {
+  try {
+    const result = await Filesystem.readFile({
+      path: PREVIOUS_MANIFEST_FILE,
+      directory: Directory.Documents,
+      encoding: "utf8" as never,
+    });
+    const manifest = JSON.parse(result.data as string) as ReleaseManifest;
+    return manifest.release_id === releaseId && Array.isArray(manifest.assets) ? manifest : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Delete assets used by neither the active release nor the one kept for
+ * rollback. Without this, every replaced video would stay on the iPad for
+ * good.
+ */
+async function pruneAssets(
+  active: ReleaseManifest,
+  previous: PackageState["previous"]
+): Promise<void> {
+  try {
+    let keep: ReleaseManifest[] | null = [active];
+    if (previous) {
+      const previousManifest = await readPreviousManifest(previous.releaseId);
+      keep = previousManifest ? [active, previousManifest] : null;
+    }
+    const { files } = await Filesystem.readdir({ path: ASSETS_SUBDIR, directory: Directory.Documents });
+    const names = files.filter((f) => f.type !== "directory").map((f) => f.name);
+    for (const name of assetsToPrune(names, keep)) {
+      await Filesystem.deleteFile({ path: `${ASSETS_SUBDIR}/${name}`, directory: Directory.Documents }).catch(
+        () => {}
+      );
+    }
+  } catch {
+    // Pruning only frees space; the install has already succeeded.
+  }
+}
+
 export interface ActivateOptions {
   /**
    * Reinstalling the release that is already active, to replace missing or
@@ -181,6 +269,12 @@ export async function activate(manifest: ReleaseManifest, options: ActivateOptio
 
   const state = await getPackageState();
 
+  // Put every asset in place before touching the live catalogue. Assets are
+  // content-addressed, so new files sit harmlessly beside the old release's,
+  // and a missing or unmovable file stops the install here, with the
+  // installed content still intact.
+  await placeAssets(manifest);
+
   await closeCatalogue();
 
   // Back up current catalogue for rollback
@@ -208,31 +302,17 @@ export async function activate(manifest: ReleaseManifest, options: ActivateOptio
     toDirectory: Directory.Library,
   });
 
-  // Copy staged assets to the active content directory
-  await ensureDir(ASSETS_SUBDIR, Directory.Documents);
-
-  for (const asset of manifest.assets) {
-    const stagingPath = `${STAGING_DIR}/${asset.path}`;
-    const activePath = `${CONTENT_DIR}/${asset.path}`;
-    try {
-      await Filesystem.copy({
-        from: stagingPath,
-        directory: Directory.Documents,
-        to: activePath,
-        toDirectory: Directory.Documents,
-      });
-    } catch {
-      // Asset might already exist from a previous release (content-addressed)
-    }
-  }
-
   if (!options.repair) {
+    // Without the outgoing manifest, an older previous-manifest.json would be
+    // left describing the wrong release; drop it instead.
     await Filesystem.copy({
       from: MANIFEST_FILE,
       directory: Directory.Documents,
       to: PREVIOUS_MANIFEST_FILE,
       toDirectory: Directory.Documents,
-    }).catch(() => {});
+    }).catch(() =>
+      Filesystem.deleteFile({ path: PREVIOUS_MANIFEST_FILE, directory: Directory.Documents }).catch(() => {})
+    );
   }
   await Filesystem.writeFile({
     path: MANIFEST_FILE,
@@ -256,6 +336,10 @@ export async function activate(manifest: ReleaseManifest, options: ActivateOptio
 
   // Clean up staging
   await cleanStaging();
+
+  // Free the space held by releases that can no longer be shown or rolled
+  // back to. Best effort: a file left behind only costs space.
+  await pruneAssets(manifest, options.repair ? state.previous : state.current);
 
   // Reinitialise the asset URL base and reopen catalogue
   await initAssets();

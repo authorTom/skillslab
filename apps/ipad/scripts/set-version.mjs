@@ -9,8 +9,8 @@
 // build number (CFBundleVersion) must go up with every build you upload to App
 // Store Connect or hand out, even when the version stays the same. Both are
 // written to the Xcode project (MARKETING_VERSION, CURRENT_PROJECT_VERSION),
-// and the version to package.json, which the Settings page shows when the app
-// runs in a browser.
+// and the version to package.json (and its lockfile), which the Settings page
+// shows when the app runs in a browser.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -64,8 +64,18 @@ fs.writeFileSync(
     .replace(/CURRENT_PROJECT_VERSION = [^;]+;/g, `CURRENT_PROJECT_VERSION = ${build};`)
 );
 
+const semver = version.split(".").length === 3 ? version : `${version}${".0".repeat(3 - version.split(".").length)}`;
 const pkg = JSON.parse(fs.readFileSync(packageFile, "utf8"));
-pkg.version = version.split(".").length === 3 ? version : `${version}${".0".repeat(3 - version.split(".").length)}`;
+pkg.version = semver;
 fs.writeFileSync(packageFile, JSON.stringify(pkg, null, 2) + "\n");
+
+// Keep the lockfile's copy of the app's own version in step.
+const lockFile = path.join(root, "package-lock.json");
+if (fs.existsSync(lockFile)) {
+  const lock = JSON.parse(fs.readFileSync(lockFile, "utf8"));
+  lock.version = semver;
+  if (lock.packages?.[""]) lock.packages[""].version = semver;
+  fs.writeFileSync(lockFile, JSON.stringify(lock, null, 2) + "\n");
+}
 
 console.log(`Version ${current.version} (${current.build}) → ${version} (${build})`);
