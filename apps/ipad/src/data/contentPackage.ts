@@ -64,6 +64,8 @@ interface ContentPackagePlugin {
   cancel(): Promise<void>;
   close(options: { id: string }): Promise<void>;
   freeSpace(): Promise<{ bytes: number }>;
+  /** Stop (or allow again) the iPad auto-locking. */
+  keepAwake(options: { on: boolean }): Promise<void>;
   /**
    * Ed25519 check with CryptoKit. Rejects with BAD_KEY or BAD_SIGNATURE when
    * the key or signature is malformed.

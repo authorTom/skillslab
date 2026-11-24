@@ -33,6 +33,7 @@ const clamp = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
  * by VoiceOver.
  */
 export default function PdfViewer({ src, title }: { src: string; title: string }) {
+  const frame = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
@@ -122,7 +123,21 @@ export default function PdfViewer({ src, title }: { src: string; title: string }
     document.body.style.overflow = "hidden";
     scroller.current?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") toggleFullScreen();
+      if (e.key === "Escape") {
+        toggleFullScreen();
+        return;
+      }
+      // Tab cycles through the document and its toolbar only, as in any
+      // modal, rather than reaching the page hidden behind.
+      if (e.key !== "Tab" || !frame.current) return;
+      const items = Array.from(
+        frame.current.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex]:not([tabindex="-1"])')
+      );
+      if (items.length === 0) return;
+      const at = items.indexOf(document.activeElement as HTMLElement);
+      const next = e.shiftKey ? (at <= 0 ? items.length - 1 : at - 1) : at === items.length - 1 ? 0 : at + 1;
+      e.preventDefault();
+      items[next].focus();
     };
     window.addEventListener("keydown", onKey);
     return () => {
@@ -275,6 +290,7 @@ export default function PdfViewer({ src, title }: { src: string; title: string }
     // The same elements in both modes, so going full screen keeps the loaded
     // document, its zoom and its rendered pages.
     <div
+      ref={frame}
       role={fullScreen ? "dialog" : undefined}
       aria-modal={fullScreen || undefined}
       aria-label={fullScreen ? title : undefined}
@@ -296,7 +312,7 @@ export default function PdfViewer({ src, title }: { src: string; title: string }
           else if (e.key === "0") zoomFromCentre(1);
         }}
         className={`touch-pan-x touch-pan-y overflow-auto overscroll-contain ${
-          fullScreen ? "h-full" : "h-[calc(100dvh-20rem)] min-h-[32rem] lg:h-[calc(100dvh-4rem)]"
+          fullScreen ? "h-full" : "h-[calc(100dvh-320px)] min-h-[512px] lg:h-[calc(100dvh-64px)]"
         }`}
       >
         {!ready ? (
@@ -329,7 +345,7 @@ export default function PdfViewer({ src, title }: { src: string; title: string }
 
       {doc && (
         <div
-          className={`glass absolute left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full !bg-black/75 p-1 font-mono text-[0.8125rem] tabular-nums ${
+          className={`glass absolute left-1/2 flex w-max -translate-x-1/2 items-center gap-1 rounded-full !bg-black/75 p-1 font-mono text-[0.8125rem] tabular-nums ${
             fullScreen ? "bottom-[calc(env(safe-area-inset-bottom)+1rem)]" : "bottom-4"
           }`}
         >
@@ -340,7 +356,7 @@ export default function PdfViewer({ src, title }: { src: string; title: string }
             type="button"
             onClick={() => zoomFromCentre(1)}
             aria-label={`Zoom ${Math.round(zoom * 100)} percent. Reset to fit width`}
-            className="min-h-11 min-w-16 rounded-full px-2 transition active:bg-white/15"
+            className="min-h-11 min-w-16 shrink-0 rounded-full px-2 transition active:bg-white/15"
           >
             {Math.round(zoom * 100)}%
           </button>
@@ -348,7 +364,9 @@ export default function PdfViewer({ src, title }: { src: string; title: string }
             <path d="M5 12h14M12 5v14" />
           </ToolbarButton>
           <span aria-hidden="true" className="mx-1 h-5 w-px bg-white/25" />
-          <span className="px-3" aria-live="polite">
+          {/* Not live: it changes with every scroll, and each page is
+              already labelled "Page n of m" for VoiceOver. */}
+          <span className="px-3">
             <span className="sr-only">Page </span>
             {currentPage}
             <span className="opacity-60"> / {sizes.length}</span>
@@ -358,7 +376,7 @@ export default function PdfViewer({ src, title }: { src: string; title: string }
             type="button"
             onClick={toggleFullScreen}
             aria-label={fullScreen ? "Exit full screen" : "Full screen"}
-            className="flex h-11 w-11 items-center justify-center rounded-full transition active:scale-90 active:bg-white/15"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition active:scale-90 active:bg-white/15"
           >
             {fullScreen ? <CollapseIcon className="h-5 w-5" /> : <ExpandIcon className="h-5 w-5" />}
           </button>
@@ -385,7 +403,7 @@ function ToolbarButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      className="flex h-11 w-11 items-center justify-center rounded-full transition active:scale-90 active:bg-white/15 disabled:opacity-35"
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition active:scale-90 active:bg-white/15 disabled:opacity-35"
     >
       <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
         {children}

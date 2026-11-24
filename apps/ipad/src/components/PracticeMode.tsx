@@ -65,6 +65,7 @@ export default function PracticeMode({ title, steps, progress, onChange, onClose
   const dialog = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const [showPictures, setShowPictures] = useState(true);
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   useModal(dialog, onClose);
 
@@ -81,6 +82,17 @@ export default function PracticeMode({ title, steps, progress, onChange, onClose
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [running]);
+
+  /** Clearing ticks and time can't be undone, so ask first once there are any. */
+  function requestReset() {
+    if (doneCount === 0 && !finished) onChange(NO_PRACTICE);
+    else setConfirmingReset(true);
+  }
+
+  function reset() {
+    setConfirmingReset(false);
+    onChange(NO_PRACTICE);
+  }
 
   function toggle(index: number) {
     const next = toggleStep(progress, index, total);
@@ -131,23 +143,44 @@ export default function PracticeMode({ title, steps, progress, onChange, onClose
               type="button"
               onClick={() => setShowPictures((s) => !s)}
               aria-pressed={showPictures}
-              aria-label="Show pictures"
-              className={`flex h-11 w-11 items-center justify-center rounded-full transition active:scale-90 ${
-                showPictures ? "text-accent-ink hover:bg-accent-soft" : "bg-ink text-canvas"
+              className={`flex min-h-11 items-center gap-2 rounded-full px-4 text-[0.9375rem] font-medium ring-1 ring-inset transition duration-150 active:scale-[0.97] ${
+                showPictures
+                  ? "bg-accent-soft text-accent-ink ring-accent/40"
+                  : "bg-surface text-ink-2 ring-line-strong hover:bg-surface-2"
               }`}
             >
-              <PhotoIcon className="h-5 w-5" />
+              <PhotoIcon className="h-4 w-4" />
+              Pictures
             </button>
             <Button
               variant="secondary"
               icon={<RefreshIcon className="h-4 w-4" />}
-              disabled={doneCount === 0 && progress.startedAt === null}
-              onClick={() => onChange(NO_PRACTICE)}
+              disabled={confirmingReset || (doneCount === 0 && progress.startedAt === null)}
+              onClick={requestReset}
             >
               Reset
             </Button>
           </div>
         </div>
+
+        {confirmingReset && (
+          <div
+            role="group"
+            aria-label="Confirm reset"
+            className="mx-6 mb-4 flex animate-fade-in flex-wrap items-center gap-3 rounded-xl bg-danger-soft p-3 pl-4 text-danger-ink"
+          >
+            <p className="min-w-0 flex-1 text-[0.9375rem] font-medium">
+              Clear {doneCount === 1 ? "the ticked step" : `all ${doneCount} ticked steps`} and the timer?
+            </p>
+            <Button variant="destructive" onClick={reset}>
+              Reset
+            </Button>
+            {/* Focus lands on the safe choice. */}
+            <Button variant="secondary" autoFocus onClick={() => setConfirmingReset(false)}>
+              Cancel
+            </Button>
+          </div>
+        )}
 
         <div className="flex items-center gap-4 px-6 pb-4">
           <div
