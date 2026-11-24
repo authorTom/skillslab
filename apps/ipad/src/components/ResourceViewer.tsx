@@ -51,6 +51,8 @@ export default function ResourceViewer({ resources, intro }: ResourceViewerProps
   // Practice progress per storyboard, kept while the skill is open so that
   // looking at another resource mid-practice doesn't lose the ticks.
   const [practice, setPractice] = useState<Record<number, PracticeProgress>>({});
+  // Likewise the step each storyboard is showing.
+  const [steps, setSteps] = useState<Record<number, number>>({});
   const tabs = useRef(new Map<number, HTMLButtonElement>());
   const baseId = useId();
   const tabId = (id: number) => `${baseId}-tab-${id}`;
@@ -74,7 +76,7 @@ export default function ResourceViewer({ resources, intro }: ResourceViewerProps
   }
 
   return (
-    <main className="safe-bottom px-6 pb-20 pt-4 sm:px-10 lg:grid lg:grid-cols-[minmax(18rem,23rem)_minmax(0,1fr)] lg:gap-14 lg:px-12 lg:pb-0 lg:pt-0">
+    <main className="safe-bottom px-6 pb-20 pt-4 sm:px-10 lg:grid lg:grid-cols-[minmax(288px,368px)_minmax(0,1fr)] lg:gap-[56px] lg:px-[48px] lg:pb-0 lg:pt-0">
       <div className="scrollbar-none lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto lg:pb-10 lg:pt-[calc(env(safe-area-inset-top)+1.5rem)]">
         {intro}
 
@@ -106,7 +108,7 @@ export default function ResourceViewer({ resources, intro }: ResourceViewerProps
                     aria-controls={panelId}
                     tabIndex={isActive ? 0 : -1}
                     onClick={() => setActiveId(resource.id)}
-                    className={`flex min-h-11 shrink-0 items-center gap-2.5 rounded-full px-4 text-left ring-1 ring-inset transition duration-150 active:scale-[0.98] lg:min-h-15 lg:w-full lg:gap-4 lg:rounded-xl lg:px-3 ${
+                    className={`flex min-h-11 shrink-0 items-center gap-2.5 rounded-full px-4 text-left ring-1 ring-inset transition duration-150 active:scale-[0.98] lg:min-h-15 lg:w-full lg:gap-4 lg:rounded-xl lg:px-3 lg:py-2.5 ${
                       isActive
                         ? "bg-ink text-canvas ring-ink lg:bg-surface lg:text-ink lg:shadow-card lg:ring-line"
                         : "bg-surface text-ink ring-line hover:ring-line-strong lg:bg-transparent lg:ring-transparent lg:hover:bg-surface/60"
@@ -126,7 +128,7 @@ export default function ResourceViewer({ resources, intro }: ResourceViewerProps
                     />
                     <span className="min-w-0 lg:flex-1">
                       <span
-                        className={`block max-w-[16rem] truncate text-[0.9375rem] font-medium leading-snug lg:max-w-none ${
+                        className={`block max-w-[16rem] truncate text-[0.9375rem] font-medium leading-snug lg:max-w-none lg:whitespace-normal lg:break-words ${
                           isActive ? "lg:text-ink" : "lg:text-ink-2"
                         }`}
                       >
@@ -159,6 +161,8 @@ export default function ResourceViewer({ resources, intro }: ResourceViewerProps
                 resource={active}
                 practice={practice[active.id] ?? NO_PRACTICE}
                 onPractice={(progress) => setPractice((p) => ({ ...p, [active.id]: progress }))}
+                step={steps[active.id] ?? 0}
+                onStep={(step) => setSteps((s) => ({ ...s, [active.id]: step }))}
               />
             </div>
           </div>
@@ -176,10 +180,14 @@ function ResourcePanel({
   resource,
   practice,
   onPractice,
+  step,
+  onStep,
 }: {
   resource: Resource;
   practice: PracticeProgress;
   onPractice: (progress: PracticeProgress) => void;
+  step: number;
+  onStep: (step: number) => void;
 }) {
   switch (resource.type) {
     case "video":
@@ -196,7 +204,9 @@ function ResourcePanel({
     case "image":
       return <ImagePanel resource={resource} />;
     case "storyboard":
-      return <StoryboardPanel resource={resource} practice={practice} onPractice={onPractice} />;
+      return (
+        <StoryboardPanel resource={resource} practice={practice} onPractice={onPractice} step={step} onStep={onStep} />
+      );
     default:
       return (
         <EmptyState outlined icon={<DocumentIcon className="h-7 w-7" />} title="Can’t open this resource">
@@ -207,8 +217,9 @@ function ResourcePanel({
 }
 
 const STAGE = "overflow-hidden rounded-[1.5rem] bg-stage shadow-raised";
-/** Media height: fills the landscape column, and leaves room below in portrait. */
-const STAGE_HEIGHT = "h-[clamp(18rem,calc(100dvh-34rem),42rem)] lg:h-[clamp(20rem,calc(100dvh-15rem),52rem)]";
+/** Media height: fills the landscape column, and leaves room below in portrait.
+ *  In px, not rem, so a large text size doesn't squeeze the media. */
+const STAGE_HEIGHT = "h-[clamp(288px,calc(100dvh-544px),672px)] lg:h-[clamp(320px,calc(100dvh-240px),832px)]";
 
 /** A blurred, enlarged copy of the image behind it, so media that doesn't
  *  match the stage's shape sits in its own colour rather than black bars. */
@@ -395,11 +406,126 @@ function ImagePanel({ resource }: { resource: Resource }) {
   );
 }
 
+const MAX_IMAGE_ZOOM = 5;
+
 /** Full-screen image viewer: a modal dialog that holds focus while open and
- *  hands it back to whatever opened it. */
+ *  hands it back to whatever opened it. Pinch or double-tap to zoom, drag to
+ *  look around; the keyboard's + − and 0 keys zoom too. */
 function Lightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
   const closeButton = useRef<HTMLButtonElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  const image = useRef<HTMLImageElement>(null);
   const close = useRef(onClose);
+
+  // Zoom and pan, applied straight to the image's transform so gestures
+  // don't re-render. Translation is in px from the centred position.
+  useEffect(() => {
+    const el = stage.current;
+    const img = image.current;
+    if (!el || !img) return;
+    const view = { scale: 1, x: 0, y: 0 };
+    const apply = (animate = false) => {
+      img.style.transition = animate ? "transform 200ms ease-out" : "";
+      img.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+    };
+    /** Point relative to the stage centre, where the image's origin is. */
+    const point = (t: { clientX: number; clientY: number }) => {
+      const r = el.getBoundingClientRect();
+      return { x: t.clientX - r.left - r.width / 2, y: t.clientY - r.top - r.height / 2 };
+    };
+    /** Zoom to `scale`, keeping the image point under `at` still. */
+    const zoomTo = (scale: number, at = { x: 0, y: 0 }) => {
+      const next = Math.min(MAX_IMAGE_ZOOM, Math.max(1, scale));
+      view.x = next === 1 ? 0 : at.x - ((at.x - view.x) * next) / view.scale;
+      view.y = next === 1 ? 0 : at.y - ((at.y - view.y) * next) / view.scale;
+      view.scale = next;
+      apply(true);
+    };
+
+    let pinch: { d0: number; s0: number; m0: { x: number; y: number }; x0: number; y0: number } | null = null;
+    let pan: { start: { x: number; y: number }; x0: number; y0: number } | null = null;
+    let lastTap = 0;
+    let moved = false;
+
+    const mid = (e: TouchEvent) => {
+      const a = point(e.touches[0]);
+      const b = point(e.touches[1]);
+      return { m: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, d: Math.hypot(a.x - b.x, a.y - b.y) };
+    };
+
+    const onStart = (e: TouchEvent) => {
+      moved = false;
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const { m, d } = mid(e);
+        pinch = { d0: d, s0: view.scale, m0: m, x0: view.x, y0: view.y };
+        pan = null;
+      } else if (e.touches.length === 1 && view.scale > 1) {
+        pan = { start: point(e.touches[0]), x0: view.x, y0: view.y };
+      }
+    };
+    const onMove = (e: TouchEvent) => {
+      moved = true;
+      if (pinch && e.touches.length === 2) {
+        e.preventDefault();
+        const { m, d } = mid(e);
+        const scale = Math.min(MAX_IMAGE_ZOOM, Math.max(1, (pinch.s0 * d) / pinch.d0));
+        view.x = m.x - ((pinch.m0.x - pinch.x0) * scale) / pinch.s0;
+        view.y = m.y - ((pinch.m0.y - pinch.y0) * scale) / pinch.s0;
+        view.scale = scale;
+        apply();
+      } else if (pan && e.touches.length === 1) {
+        e.preventDefault();
+        const p = point(e.touches[0]);
+        view.x = pan.x0 + p.x - pan.start.x;
+        view.y = pan.y0 + p.y - pan.start.y;
+        apply();
+      }
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (pinch && e.touches.length < 2) {
+        pinch = null;
+        if (view.scale < 1.05) zoomTo(1);
+        return;
+      }
+      if (e.touches.length === 0) pan = null;
+      // Double-tap: close-up at the tap, or back to fit.
+      if (!moved && e.changedTouches.length === 1 && e.touches.length === 0) {
+        const now = Date.now();
+        if (now - lastTap < 320) {
+          e.preventDefault();
+          zoomTo(view.scale > 1.05 ? 1 : 2.5, point(e.changedTouches[0]));
+          lastTap = 0;
+        } else {
+          lastTap = now;
+        }
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "+" || e.key === "=") zoomTo(view.scale * 1.25);
+      else if (e.key === "-") zoomTo(view.scale / 1.25);
+      else if (e.key === "0") zoomTo(1);
+    };
+    // WebKit's own pinch would zoom the whole app.
+    const stopGesture = (e: Event) => e.preventDefault();
+
+    el.addEventListener("touchstart", onStart, { passive: false });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd, { passive: false });
+    el.addEventListener("touchcancel", onEnd, { passive: false });
+    el.addEventListener("gesturestart", stopGesture);
+    el.addEventListener("gesturechange", stopGesture);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+      el.removeEventListener("gesturestart", stopGesture);
+      el.removeEventListener("gesturechange", stopGesture);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
 
   useEffect(() => {
     close.current = onClose;
@@ -432,10 +558,12 @@ function Lightbox({ src, alt, onClose }: { src: string; alt: string; onClose: ()
       role="dialog"
       aria-modal="true"
       aria-label={alt}
-      className="fixed inset-0 z-50 flex animate-fade-in cursor-zoom-out items-center justify-center bg-black/90 p-6 backdrop-blur-2xl"
-      onClick={onClose}
+      ref={stage}
+      className="fixed inset-0 z-50 flex animate-fade-in touch-none items-center justify-center overflow-hidden bg-black/90 p-6 backdrop-blur-2xl"
+      // Tapping around the image closes it; taps on the image are for zooming.
+      onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <img src={src} alt={alt} className="max-h-full max-w-full object-contain" />
+      <img ref={image} src={src} alt={alt} draggable={false} className="max-h-full max-w-full object-contain" />
       <button
         ref={closeButton}
         type="button"
@@ -453,14 +581,17 @@ function StoryboardPanel({
   resource,
   practice,
   onPractice,
+  step,
+  onStep,
 }: {
   resource: Resource;
   practice: PracticeProgress;
   onPractice: (progress: PracticeProgress) => void;
+  step: number;
+  onStep: (step: number) => void;
 }) {
   const [frames, setFrames] = useState<ResolvedFrame[]>([]);
   const [practising, setPractising] = useState(false);
-  const [index, setIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const swipeStart = useRef<number | null>(null);
   const resourceId = resource.id;
@@ -493,9 +624,9 @@ function StoryboardPanel({
 
   // Warm the next frame so stepping forward shows it without a blank flash.
   useEffect(() => {
-    const next = frames[index + 1];
+    const next = frames[step + 1];
     if (next?.src) new Image().src = next.src;
-  }, [frames, index]);
+  }, [frames, step]);
 
   if (loading) {
     return (
@@ -514,9 +645,10 @@ function StoryboardPanel({
     );
   }
 
-  const frame = frames[index];
   const last = frames.length - 1;
-  const go = (i: number) => setIndex(Math.min(Math.max(i, 0), last));
+  const index = Math.min(step, last);
+  const frame = frames[index];
+  const go = (i: number) => onStep(Math.min(Math.max(i, 0), last));
   const label = `Step ${index + 1} of ${frames.length}`;
 
   return (

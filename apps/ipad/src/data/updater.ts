@@ -15,6 +15,7 @@ import { provisioningReady } from "./provisioning";
 import { canInstallFromFiles, ContentPackage } from "./contentPackage";
 import { hasEnoughSpace, SPACE_MARGIN } from "./fileInstall";
 import { formatBytes } from "./format";
+import { CONTENT_BUSY, exclusive } from "./contentLock";
 import type { ReleaseManifest } from "./types";
 
 export interface UpdateProgress {
@@ -102,6 +103,18 @@ export async function checkForUpdate(): Promise<
 }
 
 export async function downloadAndActivate(
+  manifest: ReleaseManifest,
+  onProgress: (progress: UpdateProgress) => void
+): Promise<UpdateResult | UpdateError> {
+  try {
+    return await exclusive(() => download(manifest, onProgress));
+  } catch (err) {
+    if (err instanceof Error && err.message === CONTENT_BUSY) return { ok: false, error: CONTENT_BUSY };
+    throw err;
+  }
+}
+
+async function download(
   manifest: ReleaseManifest,
   onProgress: (progress: UpdateProgress) => void
 ): Promise<UpdateResult | UpdateError> {

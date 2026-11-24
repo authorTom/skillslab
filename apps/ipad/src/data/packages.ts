@@ -2,6 +2,7 @@ import { Filesystem, Directory } from "@capacitor/filesystem";
 import { closeCatalogue, openCatalogue } from "./catalogue";
 import { initAssets, ensureDir, CONTENT_DIR, ASSETS_SUBDIR } from "./assets";
 import { isSignatureEnforced, verifySignature } from "./signature";
+import { exclusive } from "./contentLock";
 import type { ReleaseManifest } from "./types";
 
 const STAGING_DIR = "staging";
@@ -346,7 +347,11 @@ export async function activate(manifest: ReleaseManifest, options: ActivateOptio
   await openCatalogue();
 }
 
-export async function rollback(): Promise<void> {
+export function rollback(): Promise<void> {
+  return exclusive(rollBack);
+}
+
+async function rollBack(): Promise<void> {
   const state = await getPackageState();
   if (!state.previous) {
     throw new Error("No previous release to roll back to.");

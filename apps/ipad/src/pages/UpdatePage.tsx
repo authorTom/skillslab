@@ -24,6 +24,7 @@ import type { UpdateProgress } from "@/data/updater";
 import { checkServerUrl, getServerUrl, getServerUrlSetting, setServerUrl } from "@/data/settings";
 import { SOURCE_LABELS, type ResolvedSetting } from "@/data/provisioning";
 import { useProvisioning } from "@/hooks/useProvisioning";
+import { useContentBusy } from "@/hooks/useContentBusy";
 import { getPackageState } from "@/data/packages";
 import { canEditPublicKey, getPublicKey, getPublicKeySetting, setPublicKey } from "@/data/signature";
 import { UP_TO_DATE } from "@/data/updater";
@@ -44,6 +45,7 @@ const INPUT =
 export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) {
   const { state, check, download, rollback, reset } = useUpdater(onContentChanged);
   const files = useFileInstall(onContentChanged);
+  const contentBusy = useContentBusy();
   const [url, setUrl] = useState(getServerUrl);
   const [savedUrl, setSavedUrl] = useState(getServerUrl);
   const [canRollback, setCanRollback] = useState(false);
@@ -107,16 +109,22 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
     state.status === "activating" ||
     state.status === "rolling-back";
   const fileBusy = files.state.step === "opening" || files.state.step === "installing";
-  const busy = onlineBusy || fileBusy;
+  // Also true for a content check started from Settings.
+  const busy = onlineBusy || fileBusy || contentBusy;
 
   return (
     <div className="min-h-screen bg-canvas">
-      <Header title="Content updates" onBack={back} backLabel="Back" titleInPortraitOnly />
+      <Header title="Content updates" onBack={back} backLabel="Back" backDisabled={contentBusy} titleInPortraitOnly />
 
       <SplitLayout
         intro={
           <PageTitle eyebrow="Settings" title="Content updates">
             <p>Keep this iPad’s skills library current from your CMS server, or from a package copied onto the device.</p>
+            {contentBusy && (
+              <p className="mt-4 text-[0.9375rem] font-medium text-ink" role="status">
+                Stay on this screen until the update finishes. The iPad won’t lock in the meantime.
+              </p>
+            )}
           </PageTitle>
         }
       >
@@ -208,7 +216,7 @@ export default function UpdatePage({ back, onContentChanged }: UpdatePageProps) 
                     {formatBytes(state.manifest.total_uncompressed_bytes)}
                   </p>
                 </div>
-                <Button icon={<DownloadIcon className="h-4 w-4" />} disabled={fileBusy} onClick={download}>
+                <Button icon={<DownloadIcon className="h-4 w-4" />} disabled={fileBusy || contentBusy} onClick={download}>
                   Download and install
                 </Button>
               </div>

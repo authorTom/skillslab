@@ -22,6 +22,17 @@ interface Section {
   skills: Skill[];
 }
 
+/**
+ * Where the user is in the library: kept outside the page, so a search or
+ * filter is still there after opening a skill and going back.
+ */
+const browsing: {
+  query: string;
+  latestSearch: { term: string; results: Skill[] } | null;
+  activeGroup: number | null;
+  activeCategory: number | null;
+} = { query: "", latestSearch: null, activeGroup: null, activeCategory: null };
+
 export default function HomePage({ navigate }: HomePageProps) {
   const update = useAvailableUpdate();
   const [groups, setGroups] = useState<Group[]>([]);
@@ -29,10 +40,14 @@ export default function HomePage({ navigate }: HomePageProps) {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [version, setVersion] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [query, setQuery] = useState("");
-  const [latestSearch, setLatestSearch] = useState<{ term: string; results: Skill[] } | null>(null);
-  const [activeGroup, setActiveGroup] = useState<number | null>(null);
-  const [activeCategory, setActiveCategory] = useState<number | null>(null);
+  const [query, setQuery] = useState(browsing.query);
+  const [latestSearch, setLatestSearch] = useState(browsing.latestSearch);
+  const [activeGroup, setActiveGroup] = useState(browsing.activeGroup);
+  const [activeCategory, setActiveCategory] = useState(browsing.activeCategory);
+
+  useEffect(() => {
+    Object.assign(browsing, { query, latestSearch, activeGroup, activeCategory });
+  }, [query, latestSearch, activeGroup, activeCategory]);
 
   useEffect(() => {
     async function load() {
@@ -41,6 +56,9 @@ export default function HomePage({ navigate }: HomePageProps) {
       setCategories(c);
       setSkills(s);
       setVersion(release?.version ?? null);
+      // A content update may have removed the group or category in view.
+      setActiveGroup((id) => (id !== null && !g.some((x) => x.id === id) ? null : id));
+      setActiveCategory((id) => (id !== null && !c.some((x) => x.id === id) ? null : id));
       setLoaded(true);
     }
     load();
@@ -179,7 +197,7 @@ export default function HomePage({ navigate }: HomePageProps) {
       {/* Landscape: a persistent library sidebar, as in an iPadOS split view. */}
       <aside
         aria-label="Library"
-        className="sticky top-0 hidden h-dvh w-[19rem] shrink-0 flex-col border-r border-line bg-sidebar px-4 pb-4 pt-[calc(env(safe-area-inset-top)+1.5rem)] lg:flex"
+        className="sticky top-0 hidden h-dvh w-[304px] shrink-0 flex-col border-r border-line bg-sidebar px-4 pb-4 pt-[calc(env(safe-area-inset-top)+1.5rem)] lg:flex"
       >
         <div className="flex items-center gap-3 px-2">
           <BrandMark className="h-9 w-9 drop-shadow-sm" />
@@ -257,7 +275,7 @@ export default function HomePage({ navigate }: HomePageProps) {
       <div className="min-w-0 flex-1">
         <Header brand title="Clinical skills" onSettings={() => navigate("/settings")} className="lg:hidden" />
 
-        <main className="safe-bottom px-6 pb-24 pt-6 sm:px-10 lg:px-14 lg:pt-[calc(env(safe-area-inset-top)+3.5rem)]">
+        <main className="safe-bottom px-6 pb-24 pt-6 sm:px-10 lg:px-[56px] lg:pt-[calc(env(safe-area-inset-top)+3.5rem)]">
           <div className="mx-auto max-w-[68rem]">
             <header key={`${searching}-${activeGroup}-${activeCategory}`} className="animate-rise">
               <PageTitle eyebrow={eyebrow} title={title} size="xl" />
@@ -383,7 +401,7 @@ function SidebarItem({
       type="button"
       onClick={onClick}
       aria-current={active ? "true" : undefined}
-      className={`flex min-h-11 w-full items-center gap-3 rounded-xl pr-3 text-left text-[0.9375rem] transition duration-150 active:scale-[0.98] ${
+      className={`flex min-h-11 w-full items-center gap-3 rounded-xl py-2 pr-3 text-left text-[0.9375rem] transition duration-150 active:scale-[0.98] ${
         indent ? "pl-5" : "pl-3"
       } ${
         active
@@ -397,7 +415,7 @@ function SidebarItem({
           className={`h-1.5 w-1.5 shrink-0 rounded-full transition ${active ? "bg-accent" : "bg-line-strong"}`}
         />
       )}
-      <span className={`min-w-0 flex-1 truncate ${strong ? "font-semibold" : active ? "font-medium" : ""}`}>
+      <span className={`min-w-0 flex-1 break-words leading-snug ${strong ? "font-semibold" : active ? "font-medium" : ""}`}>
         {label}
       </span>
       <span className={`font-mono text-[0.75rem] tabular-nums ${active ? "text-accent-ink" : "text-ink-3"}`}>
@@ -469,6 +487,8 @@ function SkillSection({
             categoryName={
               categories && skill.category_id !== null ? categories.get(skill.category_id)?.name : undefined
             }
+            // Directly under the page title when the section has no heading.
+            headingLevel={section.name ? 3 : 2}
             navigate={navigate}
           />
         ))}
@@ -481,13 +501,16 @@ function SkillCard({
   index,
   skill,
   categoryName,
+  headingLevel,
   navigate,
 }: {
   index: number;
   skill: Skill;
   categoryName?: string;
+  headingLevel: 2 | 3;
   navigate: (path: string) => void;
 }) {
+  const Heading = headingLevel === 2 ? "h2" : "h3";
   const thumb = assetUrl(skill.thumbnail_asset);
   const titleId = useId();
   const descriptionId = useId();
@@ -525,12 +548,12 @@ function SkillCard({
             {categoryName && (
               <p className="mb-1 font-mono text-[0.6875rem] uppercase tracking-[0.12em] text-accent-ink">{categoryName}</p>
             )}
-            <h3
+            <Heading
               id={titleId}
               className="text-[1.0625rem] font-medium leading-snug tracking-[-0.012em] text-ink transition-colors group-hover:text-accent-ink"
             >
               {skill.title}
-            </h3>
+            </Heading>
             {skill.description && (
               <p id={descriptionId} className="mt-1.5 line-clamp-2 text-[0.9375rem] leading-relaxed text-ink-2">
                 {skill.description}

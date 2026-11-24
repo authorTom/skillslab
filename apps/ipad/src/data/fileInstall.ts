@@ -8,6 +8,7 @@ import {
 } from "./contentPackage";
 import { activate, cleanStaging, getPackageState, readInstalledManifest, validateManifest } from "./packages";
 import { verifySignature } from "./signature";
+import { exclusive } from "./contentLock";
 import type { ReleaseManifest } from "./types";
 
 /**
@@ -108,7 +109,14 @@ export async function prepareCandidate(opened: OpenedPackage): Promise<PackageCa
 }
 
 /** Copy the package's files into staging, checking each, then activate. */
-export async function installCandidate(
+export function installCandidate(
+  candidate: PackageCandidate,
+  onProgress: (progress: CopyProgress) => void
+): Promise<void> {
+  return exclusive(() => install(candidate, onProgress));
+}
+
+async function install(
   candidate: PackageCandidate,
   onProgress: (progress: CopyProgress) => void
 ): Promise<void> {
@@ -143,7 +151,13 @@ const HASH_IN_PATH = /^assets\/([0-9a-f]{64})(?:\.|$)/;
  * content installed before the app kept one, against the catalogue (asset
  * names are their SHA-256).
  */
-export async function checkContent(
+export function checkContent(
+  onProgress: (progress: CopyProgress) => void
+): Promise<{ checked: number; problems: ContentProblem[] }> {
+  return exclusive(() => check(onProgress));
+}
+
+async function check(
   onProgress: (progress: CopyProgress) => void
 ): Promise<{ checked: number; problems: ContentProblem[] }> {
   const media = await listMedia();

@@ -7,6 +7,8 @@ interface HeaderProps {
   title?: string;
   onBack?: () => void;
   backLabel?: string;
+  /** Keep the user on this screen, such as while content installs. */
+  backDisabled?: boolean;
   onSettings?: () => void;
   /** Show the SkillsLab lockup on the leading edge (home screen). */
   brand?: boolean;
@@ -26,6 +28,7 @@ export default function Header({
   title,
   onBack,
   backLabel = "Back",
+  backDisabled,
   onSettings,
   brand,
   titleInPortraitOnly,
@@ -49,7 +52,8 @@ export default function Header({
             <button
               type="button"
               onClick={onBack}
-              className="-ml-1 flex min-h-11 items-center gap-0.5 rounded-lg pl-0.5 pr-3 text-[1.0625rem] text-accent-ink transition-opacity active:opacity-50"
+              disabled={backDisabled}
+              className="-ml-1 flex min-h-11 items-center gap-0.5 rounded-lg pl-0.5 pr-3 text-[1.0625rem] text-accent-ink transition-opacity active:opacity-50 disabled:opacity-40"
             >
               <ChevronLeftIcon className="h-6 w-6" />
               {backLabel}

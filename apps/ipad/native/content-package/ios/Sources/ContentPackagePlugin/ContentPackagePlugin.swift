@@ -44,6 +44,7 @@ public class ContentPackagePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPicker
         CAPPluginMethod(name: "cancel", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "freeSpace", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "keepAwake", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "appInfo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "diagnoseConnection", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "verifySignature", returnType: CAPPluginReturnPromise),
@@ -333,6 +334,16 @@ public class ContentPackagePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPicker
 
     @objc func freeSpace(_ call: CAPPluginCall) {
         call.resolve(["bytes": availableSpace(at: documents) ?? 0])
+    }
+
+    /// Stop the iPad auto-locking while content downloads or installs: a
+    /// locked iPad suspends the app, and the transfer with it.
+    @objc func keepAwake(_ call: CAPPluginCall) {
+        let on = call.getBool("on") ?? false
+        DispatchQueue.main.async {
+            UIApplication.shared.isIdleTimerDisabled = on
+            call.resolve()
+        }
     }
 
     /// The app's marketing version and build number, as set by
