@@ -1,4 +1,4 @@
-import { DocumentIcon, PhotoIcon, PlayIcon, StoryboardIcon } from "./icons";
+import { DocumentIcon, KeyPointsIcon, PhotoIcon, PlayIcon, StoryboardIcon } from "./icons";
 
 const LABELS: Record<string, string> = {
   video: "Video (online)",
@@ -6,6 +6,7 @@ const LABELS: Record<string, string> = {
   pdf: "PDF",
   image: "Image",
   storyboard: "Storyboard",
+  key_points: "Before you start",
 };
 
 export function resourceTypeLabel(type: string): string {
@@ -23,6 +24,8 @@ export default function ResourceIcon({ type, className }: { type: string; classN
       return <PhotoIcon className={cls} />;
     case "storyboard":
       return <StoryboardIcon className={cls} />;
+    case "key_points":
+      return <KeyPointsIcon className={cls} />;
     default:
       return <DocumentIcon className={cls} />;
   }

@@ -165,3 +165,37 @@ export const BackspaceIcon = (p: IconProps) => (
     <path d="m12 9 6 6M18 9l-6 6" />
   </Svg>
 );
+
+export const HelpIcon = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01" /></Svg>
+);
+
+export const ReplayIcon = (p: IconProps) => (
+  <Svg {...p}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></Svg>
+);
+
+export const RepeatIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m17 2 4 4-4 4" />
+    <path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4" />
+    <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+  </Svg>
+);
+
+export const SparklesIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+    <path d="M20 3v4M22 5h-4" />
+  </Svg>
+);
+
+export const KeyPointsIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect width="8" height="4" x="8" y="2" rx="1" />
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M12 11h4M12 16h4M8 11h.01M8 16h.01" />
+  </Svg>
+);
+
+export const GaugeIcon = (p: IconProps) => (
+  <Svg {...p}><path d="m12 14 4-4" /><path d="M3.34 19a10 10 0 1 1 17.32 0" /></Svg>
+);

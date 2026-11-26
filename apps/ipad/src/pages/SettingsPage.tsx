@@ -13,7 +13,9 @@ import { canInstallFromFiles } from "@/data/contentPackage";
 import { formatDate } from "@/data/format";
 import { formatAppVersion, getAppVersion, TRAINING_NOTICE } from "@/data/appInfo";
 import { GroupedBody, GroupedSection, InfoList, InfoRow, NavRow, Notice } from "@/components/Grouped";
-import { CheckCircleIcon, LockIcon, RefreshIcon } from "@/components/icons";
+import { CheckCircleIcon, HelpIcon, LockIcon, RefreshIcon, SparklesIcon } from "@/components/icons";
+import Tutorial from "@/components/Tutorial";
+import { undismissWhatsNew } from "@/data/whatsNew";
 
 interface SettingsPageProps {
   back: () => void;
@@ -31,6 +33,7 @@ interface ContentInfo {
 export default function SettingsPage({ back, navigate }: SettingsPageProps) {
   const [info, setInfo] = useState<ContentInfo | null>(null);
   const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [showTutorial, setShowTutorial] = useState(false);
 
   useEffect(() => {
     getAppVersion().then((v) => setAppVersion(formatAppVersion(v)));
@@ -108,6 +111,28 @@ export default function SettingsPage({ back, navigate }: SettingsPageProps) {
 
         <AdminLockSection />
 
+        <GroupedSection title="Help">
+          <NavRow
+            icon={<HelpIcon className="h-[18px] w-[18px]" />}
+            title="How to use SkillsLab"
+            subtitle="The guided tour of the app's main features"
+            onClick={() => setShowTutorial(true)}
+          />
+          {info && (
+            <div className="border-t border-line">
+              <NavRow
+                icon={<SparklesIcon className="h-[18px] w-[18px]" />}
+                title="Show what’s new"
+                subtitle="Bring back the summary of the last content update on the home screen"
+                onClick={() => {
+                  undismissWhatsNew();
+                  back();
+                }}
+              />
+            </div>
+          )}
+        </GroupedSection>
+
         <GroupedSection title="About" footer={TRAINING_NOTICE}>
           <InfoList>
             <InfoRow label="App" value="SkillsLab Reader" />
@@ -116,6 +141,8 @@ export default function SettingsPage({ back, navigate }: SettingsPageProps) {
           </InfoList>
         </GroupedSection>
       </SplitLayout>
+
+      {showTutorial && <Tutorial onClose={() => setShowTutorial(false)} />}
     </div>
   );
 }

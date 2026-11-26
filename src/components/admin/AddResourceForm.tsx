@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { ActionState } from "@/app/admin/actions";
 import type { ResourceType } from "@/lib/data";
+import ChaptersField from "./ChaptersField";
 import MediaField from "./MediaField";
 import StoryboardField from "./StoryboardField";
 import { inputClass, primaryButtonClass } from "./formStyles";
@@ -113,6 +114,8 @@ export default function AddResourceForm({
           hint={selected.hint}
         />
       )}
+
+      {type === "local_video" && <ChaptersField key={`chapters-${fieldKey}`} />}
 
       <SubmitButton />
     </form>

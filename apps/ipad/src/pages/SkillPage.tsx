@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Skill, Resource } from "@/data/types";
 import { getCategory, getSkillBySlug, listResources } from "@/data/catalogue";
+import { keyPointSections } from "@/data/keyPoints";
 import Header from "@/components/Header";
 import PageTitle from "@/components/PageTitle";
 import ResourceViewer from "@/components/ResourceViewer";
@@ -81,6 +82,7 @@ export default function SkillPage({ slug, back }: SkillPageProps) {
 
       <ResourceViewer
         resources={resources}
+        keyPoints={keyPointSections(skill)}
         intro={
           <div className="animate-rise">
             <button

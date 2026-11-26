@@ -6,6 +6,7 @@ import { useFormStatus } from "react-dom";
 import type { ActionState } from "@/app/admin/actions";
 import type { Resource } from "@/lib/data";
 import type { MediaItem } from "@/lib/media";
+import ChaptersField from "./ChaptersField";
 import MediaField from "./MediaField";
 import StoryboardField, { type StoryboardStep } from "./StoryboardField";
 import { inputClass, primaryButtonClass } from "./formStyles";
@@ -87,6 +88,8 @@ export default function EditResourceForm({
           hint="Changing this points the resource at a different library file. The old one stays in the library for anything else that uses it."
         />
       )}
+
+      {resource.type === "local_video" && <ChaptersField initial={resource.chapters} />}
 
       {resource.type === "storyboard" && (
         <StoryboardField key={steps?.map((s) => s.media.id).join("-")} initial={steps} />

@@ -33,6 +33,7 @@ export function getDb(): Database.Database {
     migrate(db);
     migrateToMediaLibrary(db);
     migrateMediaVideoKind(db);
+    migrateLearningFields(db);
     seedDemoCatalogue(db);
   } catch (error) {
     // Leave nothing cached, so the next request starts over cleanly.
@@ -128,7 +129,13 @@ const SCHEMA = `
       category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
       description TEXT NOT NULL DEFAULT '',
       thumbnail_media_id INTEGER REFERENCES media(id) ON DELETE SET NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      -- Key points: plain text, one item per line (see key-points.ts).
+      indications TEXT NOT NULL DEFAULT '',
+      contraindications TEXT NOT NULL DEFAULT '',
+      equipment TEXT NOT NULL DEFAULT '',
+      red_flags TEXT NOT NULL DEFAULT '',
+      common_errors TEXT NOT NULL DEFAULT ''
     );
 
     -- A resource's content is a Vimeo URL for videos, "media:<id>" for a PDF or
@@ -139,7 +146,9 @@ const SCHEMA = `
       type TEXT NOT NULL CHECK (type IN ('pdf', 'image', 'storyboard', 'video', 'local_video')),
       title TEXT NOT NULL,
       content TEXT NOT NULL,
-      position INTEGER NOT NULL DEFAULT 0
+      position INTEGER NOT NULL DEFAULT 0,
+      -- Chapters of an uploaded video: "m:ss Name" lines (see chapters.ts).
+      chapters TEXT NOT NULL DEFAULT ''
     );
 
     -- Recycle bin. Deleted items are snapshotted here as a JSON restore blob.
@@ -312,6 +321,23 @@ function migrate(db: Database.Database) {
     db.exec(
       "ALTER TABLE skills ADD COLUMN thumbnail_media_id INTEGER REFERENCES media(id) ON DELETE SET NULL"
     );
+  }
+}
+
+/**
+ * Key points on courses and chapters on videos. Runs after
+ * migrateMediaVideoKind, which rebuilds `resources` with a fixed column list
+ * and would drop a column added before it.
+ */
+function migrateLearningFields(db: Database.Database) {
+  const skillColumns = columnsOf(db, "skills");
+  for (const column of ["indications", "contraindications", "equipment", "red_flags", "common_errors"]) {
+    if (!skillColumns.includes(column)) {
+      db.exec(`ALTER TABLE skills ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
+    }
+  }
+  if (!columnsOf(db, "resources").includes("chapters")) {
+    db.exec("ALTER TABLE resources ADD COLUMN chapters TEXT NOT NULL DEFAULT ''");
   }
 }
 
@@ -782,6 +808,39 @@ function seedDemoCourses(db: Database.Database, save: SaveSeedFile) {
   insertResource.run(venepuncture, "video", "Demonstration video", "https://vimeo.com/76979871", 0);
   insertResource.run(venepuncture, "storyboard", "Step-by-step storyboard", JSON.stringify(storyboardFrames), 1);
   insertResource.run(venepuncture, "pdf", "Procedure guide (PDF)", mediaRef(guidePdf), 2);
+  // Sample key points, to show the feature. Replace them with your own.
+  db.prepare(
+    `UPDATE skills SET indications = ?, contraindications = ?, equipment = ?, red_flags = ?, common_errors = ?
+     WHERE id = ?`
+  ).run(
+    ["Blood tests requested by the clinical team", "Monitoring of treatment or drug levels"].join("\n"),
+    [
+      "Arm on the side of a mastectomy or lymph node clearance",
+      "Arm with a fistula, infusion running or infection at the site",
+      "Patient who declines or lacks capacity without a best-interests decision",
+    ].join("\n"),
+    [
+      "Gloves and apron",
+      "Tourniquet",
+      "Skin cleansing wipe",
+      "Needle and holder, or butterfly set",
+      "Blood bottles in order of draw",
+      "Gauze and tape",
+      "Sharps bin",
+      "Request form and labels",
+    ].join("\n"),
+    [
+      "Patient feels faint or loses consciousness",
+      "Arterial (bright red, pulsing) blood",
+      "Sharp, shooting or electric pain down the arm",
+    ].join("\n"),
+    [
+      "Leaving the tourniquet on for more than a minute",
+      "Labelling bottles away from the patient",
+      "Re-sheathing the needle",
+    ].join("\n"),
+    venepuncture
+  );
 
   const cannulation = seed(
     "peripheral-iv-cannulation",

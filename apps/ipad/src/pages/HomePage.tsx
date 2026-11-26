@@ -8,7 +8,11 @@ import SearchBar from "@/components/SearchBar";
 import BrandMark from "@/components/BrandMark";
 import Button from "@/components/Button";
 import EmptyState from "@/components/EmptyState";
-import { SearchIcon, SettingsIcon, StoryboardIcon, DownloadIcon } from "@/components/icons";
+import { SearchIcon, SettingsIcon, StoryboardIcon, DownloadIcon, HelpIcon } from "@/components/icons";
+import Tutorial from "@/components/Tutorial";
+import WhatsNewCard from "@/components/WhatsNewCard";
+import { hasSeenTutorial, markTutorialSeen } from "@/data/tutorial";
+import { dismissWhatsNew, isWhatsNewDismissed, readWhatsNew, type WhatsNew } from "@/data/whatsNew";
 import { useAvailableUpdate } from "@/hooks/useAvailableUpdate";
 import { TRAINING_NOTICE } from "@/data/appInfo";
 
@@ -44,6 +48,18 @@ export default function HomePage({ navigate }: HomePageProps) {
   const [latestSearch, setLatestSearch] = useState(browsing.latestSearch);
   const [activeGroup, setActiveGroup] = useState(browsing.activeGroup);
   const [activeCategory, setActiveCategory] = useState(browsing.activeCategory);
+  const [whatsNew, setWhatsNew] = useState<WhatsNew | null>(null);
+  const [showTutorial, setShowTutorial] = useState(() => !hasSeenTutorial());
+
+  function closeTutorial() {
+    markTutorialSeen();
+    setShowTutorial(false);
+  }
+
+  function dismissChanges() {
+    if (whatsNew) dismissWhatsNew(whatsNew.releaseId);
+    setWhatsNew(null);
+  }
 
   useEffect(() => {
     Object.assign(browsing, { query, latestSearch, activeGroup, activeCategory });
@@ -56,6 +72,9 @@ export default function HomePage({ navigate }: HomePageProps) {
       setCategories(c);
       setSkills(s);
       setVersion(release?.version ?? null);
+      if (release && !isWhatsNewDismissed(release.id)) {
+        void readWhatsNew(release.id).then(setWhatsNew);
+      }
       // A content update may have removed the group or category in view.
       setActiveGroup((id) => (id !== null && !g.some((x) => x.id === id) ? null : id));
       setActiveCategory((id) => (id !== null && !c.some((x) => x.id === id) ? null : id));
@@ -259,7 +278,15 @@ export default function HomePage({ navigate }: HomePageProps) {
           )}
         </nav>
 
-        <div className="mt-3 border-t border-line pt-3">
+        <div className="mt-3 space-y-0.5 border-t border-line pt-3">
+          <button
+            type="button"
+            onClick={() => setShowTutorial(true)}
+            className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-[0.9375rem] text-ink-2 transition hover:bg-surface/60 hover:text-ink active:opacity-60"
+          >
+            <HelpIcon className="h-5 w-5" />
+            <span className="flex-1">How to use SkillsLab</span>
+          </button>
           <button
             type="button"
             onClick={() => navigate("/settings")}
@@ -273,7 +300,16 @@ export default function HomePage({ navigate }: HomePageProps) {
       </aside>
 
       <div className="min-w-0 flex-1">
-        <Header brand title="Clinical skills" onSettings={() => navigate("/settings")} className="lg:hidden" />
+        <Header brand title="Clinical skills" onSettings={() => navigate("/settings")} className="lg:hidden">
+          <button
+            type="button"
+            onClick={() => setShowTutorial(true)}
+            aria-label="How to use SkillsLab"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-ink-2 transition hover:bg-surface-2 active:bg-surface-3"
+          >
+            <HelpIcon className="h-[22px] w-[22px]" />
+          </button>
+        </Header>
 
         <main className="safe-bottom px-6 pb-24 pt-6 sm:px-10 lg:px-[56px] lg:pt-[calc(env(safe-area-inset-top)+3.5rem)]">
           <div className="mx-auto max-w-[68rem]">
@@ -305,6 +341,14 @@ export default function HomePage({ navigate }: HomePageProps) {
                 </button>
               )}
             </header>
+
+            {whatsNew && allSelected && (
+              <WhatsNewCard
+                whatsNew={whatsNew}
+                onOpen={(slug) => navigate(`/skill/${slug}`)}
+                onDismiss={dismissChanges}
+              />
+            )}
 
             {/* Portrait: search and filters sit above the grid. */}
             <div className="mt-8 space-y-4 lg:hidden">
@@ -377,6 +421,8 @@ export default function HomePage({ navigate }: HomePageProps) {
           </div>
         </main>
       </div>
+
+      {showTutorial && <Tutorial onClose={closeTutorial} />}
     </div>
   );
 }

@@ -26,6 +26,7 @@ import {
   type TrashRow,
 } from "./data";
 import { formatBytes } from "./files";
+import { keyPointsOf } from "./key-points";
 import {
   deleteMediaRow,
   removeStorageFile,
@@ -61,11 +62,13 @@ export function trashSkill(skill: Skill) {
     description: skill.description,
     thumbnail_media_id: skill.thumbnail_media_id,
     created_at: skill.created_at,
+    key_points: keyPointsOf(skill),
     resources: resources.map((r) => ({
       type: r.type,
       title: r.title,
       content: r.content,
       position: r.position,
+      chapters: r.chapters,
     })),
   };
   const detail = [
@@ -143,6 +146,7 @@ function resourceSnapshot(resource: Resource, skillTitle: string): ResourceSnaps
     title: resource.title,
     content: resource.content,
     position: resource.position,
+    chapters: resource.chapters,
   };
 }
 

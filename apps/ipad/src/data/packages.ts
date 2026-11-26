@@ -3,6 +3,7 @@ import { closeCatalogue, openCatalogue } from "./catalogue";
 import { initAssets, ensureDir, CONTENT_DIR, ASSETS_SUBDIR } from "./assets";
 import { isSignatureEnforced, verifySignature } from "./signature";
 import { exclusive } from "./contentLock";
+import { clearWhatsNew, recordWhatsNew, snapshotCatalogue, type CatalogueSnapshot } from "./whatsNew";
 import type { ReleaseManifest } from "./types";
 
 const STAGING_DIR = "staging";
@@ -276,6 +277,12 @@ export async function activate(manifest: ReleaseManifest, options: ActivateOptio
   // installed content still intact.
   await placeAssets(manifest);
 
+  // Note what learners can see now, to tell them afterwards what changed.
+  let before: CatalogueSnapshot | null = null;
+  if (state.current && !options.repair) {
+    before = await snapshotCatalogue().catch(() => null);
+  }
+
   await closeCatalogue();
 
   // Back up current catalogue for rollback
@@ -345,6 +352,14 @@ export async function activate(manifest: ReleaseManifest, options: ActivateOptio
   // Reinitialise the asset URL base and reopen catalogue
   await initAssets();
   await openCatalogue();
+
+  if (!options.repair) {
+    await recordWhatsNew(
+      before,
+      { releaseId: manifest.release_id, version: manifest.release_version },
+      state.current?.version ?? null
+    );
+  }
 }
 
 export function rollback(): Promise<void> {
@@ -386,6 +401,8 @@ async function rollBack(): Promise<void> {
     previous: null,
   };
   await savePackageState(newState);
+  // The summary described the release just rolled back from.
+  await clearWhatsNew();
 
   await initAssets();
   await openCatalogue();

@@ -1,4 +1,12 @@
-/** Content schema version for the offline reader database. */
+/**
+ * Content schema version for the offline reader database.
+ *
+ * Bump it only for a change an older app can't read: apps refuse releases
+ * newer than they know. Additive changes stay at 1. The key-point columns on
+ * `skills` and `resources.chapters` were added that way: older apps select
+ * `*` and ignore them, and newer apps treat them as empty when a release
+ * built before them is installed.
+ */
 export const CONTENT_SCHEMA_VERSION = 1;
 
 /** Package format identifier. */
@@ -38,7 +46,12 @@ export const READER_SCHEMA_SQL = `
     category_id INTEGER REFERENCES categories(id),
     description TEXT NOT NULL DEFAULT '',
     thumbnail_asset TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    indications TEXT NOT NULL DEFAULT '',
+    contraindications TEXT NOT NULL DEFAULT '',
+    equipment TEXT NOT NULL DEFAULT '',
+    red_flags TEXT NOT NULL DEFAULT '',
+    common_errors TEXT NOT NULL DEFAULT ''
   );
 
   CREATE TABLE resources (
@@ -49,7 +62,9 @@ export const READER_SCHEMA_SQL = `
     content TEXT NOT NULL DEFAULT '',
     asset TEXT,
     requires_internet INTEGER NOT NULL DEFAULT 0,
-    position INTEGER NOT NULL DEFAULT 0
+    position INTEGER NOT NULL DEFAULT 0,
+    -- JSON array of {time, title}, seconds from the start. Local videos only.
+    chapters TEXT NOT NULL DEFAULT '[]'
   );
 
   CREATE TABLE storyboard_frames (

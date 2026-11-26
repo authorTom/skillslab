@@ -47,6 +47,8 @@ import {
   trashThumbnail,
 } from "@/lib/trash";
 import { serialiseStoryboardFrames, type StoryboardFrame } from "@/lib/storyboard";
+import { parseChapters, serialiseChapters } from "@/lib/chapters";
+import { KEY_POINT_KEYS, normaliseKeyPoints, type KeyPoints } from "@/lib/key-points";
 import { NEW_CATEGORY } from "@/lib/taxonomy";
 
 export type ActionState = { error?: string; success?: string };
@@ -140,7 +142,7 @@ export async function createSkillAction(
   const category = chosenCategory(formData);
   if ("error" in category) return category;
 
-  const id = createSkill(title, category.categoryId, text(formData, "description"));
+  const id = createSkill(title, category.categoryId, text(formData, "description"), keyPointsFrom(formData));
   if (thumbnail.mediaId) setSkillThumbnail(id, thumbnail.mediaId);
   revalidateAll();
   redirect(`/admin/skills/${id}?created=1`);
@@ -171,9 +173,16 @@ export async function updateSkillAction(
     setSkillThumbnail(id, null);
   }
 
-  updateSkill(id, title, category.categoryId, text(formData, "description"));
+  updateSkill(id, title, category.categoryId, text(formData, "description"), keyPointsFrom(formData));
   revalidateAll();
   return { success: "Changes saved." };
+}
+
+/** The key-point textareas on the course form, tidied to one item per line. */
+function keyPointsFrom(formData: FormData): KeyPoints {
+  const points = {} as KeyPoints;
+  for (const key of KEY_POINT_KEYS) points[key] = normaliseKeyPoints(text(formData, key));
+  return points;
 }
 
 /**
@@ -313,8 +322,10 @@ export async function addResourceAction(
 
   const content = chosenContent(formData, type);
   if ("error" in content) return content;
+  const chapters = chosenChapters(formData, type);
+  if ("error" in chapters) return chapters;
 
-  addResource(skillId, type, text(formData, "title") || defaultTitle(type), content.content);
+  addResource(skillId, type, text(formData, "title") || defaultTitle(type), content.content, chapters.chapters);
   revalidateAll();
   return { success: "Resource added." };
 }
@@ -330,10 +341,28 @@ export async function updateResourceAction(
 
   const content = chosenContent(formData, resource.type);
   if ("error" in content) return content;
+  const chapters = chosenChapters(formData, resource.type);
+  if ("error" in chapters) return chapters;
 
-  updateResource(id, text(formData, "title") || defaultTitle(resource.type), content.content);
+  updateResource(
+    id,
+    text(formData, "title") || defaultTitle(resource.type),
+    content.content,
+    chapters.chapters
+  );
   revalidateAll();
   return { success: "Changes saved." };
+}
+
+/** An uploaded video's chapter list, checked and tidied. Other types have none. */
+function chosenChapters(
+  formData: FormData,
+  type: ResourceType
+): { chapters: string } | { error: string } {
+  if (type !== "local_video") return { chapters: "" };
+  const parsed = parseChapters(text(formData, "chapters"));
+  if (!parsed.ok) return { error: parsed.error };
+  return { chapters: serialiseChapters(parsed.chapters) };
 }
 
 /**
