@@ -37,6 +37,13 @@ LMS integration; it is a well-organised library, not a learning platform.
 - **Resource viewer** — inline PDFs, an image lightbox, step-through storyboards
   with a caption per step, and embedded Vimeo videos (private links with a hash
   are supported).
+- **Key points** — each course can list its indications, contraindications,
+  equipment, red flags and common errors, one item per line. They're shown
+  above the resources on the web and as the first tab on the iPad, and the
+  equipment list opens the iPad's practice mode.
+- **Video tools for learning** — under an uploaded video: 0.5× to 1.25× speed,
+  a five-second replay, an A–B loop to repeat one movement, and chapters that
+  editors add as `m:ss Name` lines on the resource.
 - **Admin section** — course management behind individual sign-ins: add, edit and remove
   skills, organise them into groups and categories, upload PDFs and images,
   build storyboards, attach Vimeo videos by pasting the URL, and reorder the
@@ -253,7 +260,19 @@ key*; build a new one.
 
 `apps/ipad` is a reader app for iPads that downloads signed content releases
 from this server (built at **/admin/releases**) and works fully offline, or
-installs `.skillslab` package files from a USB drive, AirDrop or Files. It is
+installs `.skillslab` package files from a USB drive, AirDrop or Files.
+
+On first launch it shows a short tutorial of its main features, which anyone
+can reopen from the **?** button (or *How to use SkillsLab* in the sidebar and
+Settings). After a content update, a *What's new* card on the home screen lists
+the skills the update added, changed or removed. The iPad works this out
+itself by comparing the old and new catalogues, so it's right even when an
+iPad skipped releases.
+
+Key points and video chapters are additive columns in the release catalogue,
+so the content schema version stays at 1. iPads still on an older app accept
+new releases and simply don't show them, and the new app treats releases built
+before them as having none. It is
 distributed privately, ad hoc or as an Apple Business Manager custom app, and
 managed iPads can be given the server address and signing key by MDM. The
 [iPad distribution guide](docs/ipad-distribution.md) covers building,

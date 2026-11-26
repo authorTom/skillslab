@@ -95,6 +95,9 @@ describe("media video migration", () => {
       expect(db.pragma("user_version", { simple: true })).toBe(2);
       expect(snapshot(db)).toEqual(before);
       expect(db.pragma("foreign_keys", { simple: true })).toBe(1);
+      // Rebuilding resources must not lose the chapters column.
+      const resourceColumns = (db.prepare("PRAGMA table_info(resources)").all() as { name: string }[]).map((c) => c.name);
+      expect(resourceColumns).toContain("chapters");
 
       expect(() =>
         db
@@ -103,4 +106,51 @@ describe("media video migration", () => {
       ).not.toThrow();
     });
   }
+});
+
+describe("learning fields migration", () => {
+  beforeEach(() => {
+    cwd = process.cwd();
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "skillslab-db-"));
+    process.chdir(tmp);
+  });
+
+  afterEach(() => {
+    closeAppDb();
+    process.chdir(cwd);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("adds key-point and chapter columns to a database from before them", async () => {
+    const seeded = await openAppDb();
+    const skills = (seeded.prepare("SELECT COUNT(*) AS n FROM skills").get() as { n: number }).n;
+    closeAppDb();
+
+    const raw = new Database(path.join(tmp, "data", "app.db"));
+    for (const column of ["indications", "contraindications", "equipment", "red_flags", "common_errors"]) {
+      raw.exec(`ALTER TABLE skills DROP COLUMN ${column}`);
+    }
+    raw.exec("ALTER TABLE resources DROP COLUMN chapters");
+    raw.close();
+
+    const db = await openAppDb();
+    const columns = (table: string) =>
+      (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+    expect(columns("skills")).toEqual(
+      expect.arrayContaining(["indications", "contraindications", "equipment", "red_flags", "common_errors"])
+    );
+    expect(columns("resources")).toContain("chapters");
+    expect((db.prepare("SELECT COUNT(*) AS n FROM skills").get() as { n: number }).n).toBe(skills);
+    expect(db.prepare("SELECT equipment FROM skills LIMIT 1").get()).toEqual({ equipment: "" });
+  });
+
+  it("seeds sample key points on a new installation", async () => {
+    const db = await openAppDb();
+    const row = db.prepare("SELECT equipment, red_flags FROM skills WHERE slug = 'venepuncture'").get() as {
+      equipment: string;
+      red_flags: string;
+    };
+    expect(row.equipment.split("\n")).toContain("Tourniquet");
+    expect(row.red_flags).not.toBe("");
+  });
 });

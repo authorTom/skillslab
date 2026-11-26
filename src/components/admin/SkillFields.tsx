@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { KEY_POINT_FIELDS, type KeyPoints } from "@/lib/key-points";
 import { NEW_CATEGORY } from "@/lib/taxonomy";
 import { inputClass } from "./formStyles";
 
@@ -12,7 +13,7 @@ export interface CategoryOption {
   group: string;
 }
 
-export interface SkillDefaults {
+export interface SkillDefaults extends Partial<KeyPoints> {
   title: string;
   category_id: number | null;
   description: string;
@@ -125,6 +126,33 @@ export default function SkillFields({
           className={inputClass}
         />
       </div>
+      <fieldset className="rounded-2xl border border-stone-200 p-5">
+        <legend className="px-1 text-sm font-semibold text-stone-800">Key points</legend>
+        <p className="text-xs text-stone-500">
+          Optional. Put one item on each line. They&apos;re shown on the course page and as the first tab on the
+          iPad.
+        </p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          {KEY_POINT_FIELDS.map((field) => (
+            <div key={field.key} className={field.key === "equipment" ? "sm:row-span-2" : undefined}>
+              <label htmlFor={field.key} className="mb-1 block text-sm font-medium text-stone-700">
+                {field.label}
+              </label>
+              <textarea
+                id={field.key}
+                name={field.key}
+                rows={field.key === "equipment" ? 9 : 3}
+                defaultValue={defaults?.[field.key] ?? ""}
+                aria-describedby={`${field.key}-hint`}
+                className={inputClass}
+              />
+              <p id={`${field.key}-hint`} className="mt-1 text-xs text-stone-400">
+                {field.hint}
+              </p>
+            </div>
+          ))}
+        </div>
+      </fieldset>
     </>
   );
 }

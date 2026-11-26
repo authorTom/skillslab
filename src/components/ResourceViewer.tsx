@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { Chapter } from "@/lib/chapters";
 import type { ResolvedFrame, ResolvedResource } from "@/lib/media";
+import LearningVideo from "./LearningVideo";
 import { ResourceIcon, RESOURCE_TYPE_LABELS } from "./ResourceIcon";
 
 /** Turns a Vimeo URL (with optional privacy hash) into a player embed URL. */
@@ -70,7 +72,7 @@ function ResourcePanel({ resource }: { resource: ResolvedResource }) {
     case "video":
       return <VideoPanel url={resource.src} />;
     case "local_video":
-      return <LocalVideoPanel src={resource.src} title={resource.title} />;
+      return <LocalVideoPanel src={resource.src} title={resource.title} chapters={resource.chapters} />;
     case "pdf":
       return <PdfPanel src={resource.src} title={resource.title} />;
     case "image":
@@ -121,20 +123,10 @@ function VideoPanel({ url }: { url: string }) {
   );
 }
 
-function LocalVideoPanel({ src, title }: { src: string; title: string }) {
+function LocalVideoPanel({ src, title, chapters }: { src: string; title: string; chapters: Chapter[] }) {
   return (
     <Card>
-      <div className="aspect-video bg-black">
-        <video
-          src={src}
-          controls
-          playsInline
-          className="h-full w-full"
-          title={title}
-        >
-          Your browser does not support the video element.
-        </video>
-      </div>
+      <LearningVideo src={src} title={title} chapters={chapters} />
     </Card>
   );
 }

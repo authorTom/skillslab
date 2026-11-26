@@ -15,6 +15,7 @@ import { mediaUrl, parseMediaRef } from "./media-refs";
 import { MEDIA_EXTENSIONS, mediaKindFor, type MediaKind } from "./media-types";
 import { parseStoryboardFrames } from "./storyboard";
 import { slugify } from "./slug";
+import { chaptersOf, type Chapter } from "./chapters";
 
 export type { MediaKind };
 
@@ -193,6 +194,8 @@ export interface ResolvedResource {
   src: string;
   alt: string;
   frames: ResolvedFrame[];
+  /** Chapters of an uploaded video; empty for everything else. */
+  chapters: Chapter[];
   /** True when a referenced library file has been deleted or lost. */
   broken: boolean;
 }
@@ -220,6 +223,7 @@ export function resolveResources(resources: Resource[]): ResolvedResource[] {
       type: resource.type,
       title: resource.title,
       position: resource.position,
+      chapters: resource.type === "local_video" ? chaptersOf(resource.chapters) : [],
     };
 
     if (resource.type === "video") {

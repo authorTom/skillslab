@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { getSkillBySlug } from "@/lib/data";
 import { listResolvedResources } from "@/lib/media";
 import ResourceViewer from "@/components/ResourceViewer";
+import KeyPoints from "@/components/KeyPoints";
+import { keyPointsOf } from "@/lib/key-points";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +56,8 @@ export default async function SkillPage({
           <p className="mt-3 leading-relaxed text-stone-500">{skill.description}</p>
         )}
       </header>
+
+      <KeyPoints points={keyPointsOf(skill)} />
 
       <div className="mt-10">
         {resources.length === 0 ? (

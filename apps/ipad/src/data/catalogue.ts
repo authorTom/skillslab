@@ -80,6 +80,16 @@ export async function listStoryboardFrames(resourceId: number): Promise<Storyboa
   return query("SELECT * FROM storyboard_frames WHERE resource_id = ? ORDER BY position", [resourceId]);
 }
 
+/** Every resource in the catalogue, for comparing one release with another. */
+export async function listAllResources(): Promise<Resource[]> {
+  return query("SELECT * FROM resources ORDER BY skill_id, position, id");
+}
+
+/** Every storyboard frame in the catalogue, for comparing releases. */
+export async function listAllStoryboardFrames(): Promise<StoryboardFrame[]> {
+  return query("SELECT * FROM storyboard_frames ORDER BY resource_id, position");
+}
+
 export async function getMedia(id: number): Promise<MediaItem | null> {
   const rows = await query<MediaItem>("SELECT * FROM media WHERE id = ?", [id]);
   return rows[0] ?? null;

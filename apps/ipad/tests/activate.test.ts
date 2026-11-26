@@ -63,9 +63,16 @@ vi.mock("@capacitor/filesystem", () => ({
   Filesystem: fs.Filesystem,
   Directory: { Documents: "DOCUMENTS", Library: "LIBRARY" },
 }));
+/** Skills in each catalogue, keyed by the catalogue file's contents, so the
+ *  mock serves whichever catalogue is live. */
+const catalogues = vi.hoisted(() => new Map<string, Record<string, unknown>[]>());
 vi.mock("../src/data/catalogue", () => ({
   openCatalogue: vi.fn().mockResolvedValue(true),
   closeCatalogue: vi.fn().mockResolvedValue(undefined),
+  isOpen: () => true,
+  listSkills: async () => catalogues.get(fs.files.get("LIBRARY/CapacitorDatabase/catalogueSQLite.db") ?? "") ?? [],
+  listAllResources: async () => [],
+  listAllStoryboardFrames: async () => [],
 }));
 vi.mock("../src/data/signature", () => ({
   verifySignature: vi.fn().mockResolvedValue({ valid: true }),
@@ -237,5 +244,47 @@ describe("assetsToPrune", () => {
 
   it("lists nothing when a kept release's files are unknown", () => {
     expect(assetsToPrune([keptName, "other.mp4"], null)).toEqual([]);
+  });
+});
+
+describe("what's new", () => {
+  const skill = (id: number, title: string, description = "") => ({
+    id,
+    slug: title.toLowerCase(),
+    title,
+    category_id: null,
+    description,
+    thumbnail_asset: null,
+    created_at: "",
+  });
+  const whatsNew = () => {
+    const data = fs.files.get(`${DOCS}/content/whats-new.json`);
+    return data === undefined ? null : JSON.parse(data);
+  };
+
+  it("records the skills an update added, changed and removed, and forgets them on rollback", async () => {
+    const r1 = release("r1", ["video-a"]);
+    const r2 = release("r2", ["video-a"]);
+    catalogues.set(r1.catalogue, [skill(1, "Alpha"), skill(2, "Bravo")]);
+    catalogues.set(r2.catalogue, [skill(1, "Alpha", "changed"), skill(3, "Charlie")]);
+
+    stage(r1);
+    await activate(r1.manifest);
+    // Nothing to compare a first install with.
+    expect(whatsNew()).toBeNull();
+
+    stage(r2);
+    await activate(r2.manifest);
+    expect(whatsNew()).toEqual({
+      releaseId: "r2",
+      version: "r2",
+      fromVersion: "r1",
+      added: [{ slug: "charlie", title: "Charlie" }],
+      updated: [{ slug: "alpha", title: "Alpha" }],
+      removed: ["Bravo"],
+    });
+
+    await rollback();
+    expect(whatsNew()).toBeNull();
   });
 });

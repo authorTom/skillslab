@@ -23,6 +23,12 @@ export interface Skill {
   description: string;
   thumbnail_asset: string | null;
   created_at: string;
+  // Key points: one item per line. Absent from releases built before them.
+  indications?: string;
+  contraindications?: string;
+  equipment?: string;
+  red_flags?: string;
+  common_errors?: string;
 }
 
 export interface Resource {
@@ -34,6 +40,8 @@ export interface Resource {
   asset: string | null;
   requires_internet: number;
   position: number;
+  /** JSON array of {time, title} for a local video. Absent from older releases. */
+  chapters?: string;
 }
 
 export interface StoryboardFrame {

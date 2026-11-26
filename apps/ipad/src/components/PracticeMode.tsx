@@ -54,6 +54,8 @@ interface PracticeModeProps {
   progress: PracticeProgress;
   onChange: (progress: PracticeProgress) => void;
   onClose: () => void;
+  /** The skill's equipment list, shown until the first step is ticked. */
+  equipment?: string[];
 }
 
 /**
@@ -61,7 +63,7 @@ interface PracticeModeProps {
  * performing the skill, with a timer that runs from the first tick to the
  * last. Reset clears it for the next student.
  */
-export default function PracticeMode({ title, steps, progress, onChange, onClose }: PracticeModeProps) {
+export default function PracticeMode({ title, steps, progress, onChange, onClose, equipment = [] }: PracticeModeProps) {
   const dialog = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const [showPictures, setShowPictures] = useState(true);
@@ -219,6 +221,28 @@ export default function PracticeMode({ title, steps, progress, onChange, onClose
               {finished ? `All ${total} steps done in ${formatElapsed(elapsed)}.` : ""}
             </p>
             {finished && <div className="mb-5 lg:hidden">{completion}</div>}
+            {progress.startedAt === null && equipment.length > 0 && (
+              <section
+                aria-labelledby={`${titleId}-equipment`}
+                className="mb-6 animate-fade-in rounded-[1.25rem] bg-accent-soft/60 p-5 ring-1 ring-inset ring-accent/25"
+              >
+                <h3
+                  id={`${titleId}-equipment`}
+                  className="flex items-center gap-2 text-[1.0625rem] font-semibold tracking-[-0.01em] text-accent-ink"
+                >
+                  <ChecklistIcon className="h-5 w-5" />
+                  Before you start, gather
+                </h3>
+                <ul className="mt-3 grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
+                  {equipment.map((item, i) => (
+                    <li key={i} className="flex gap-2.5 text-[0.9375rem] leading-snug text-ink">
+                      <span aria-hidden="true" className="mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
             {progress.startedAt === null && (
               <p className="mb-4 text-[0.9375rem] text-ink-2">
                 Tick each step as you perform it. The timer starts with the first tick.

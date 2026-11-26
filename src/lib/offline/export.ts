@@ -5,6 +5,8 @@ import path from "path";
 import { getDb, DATA_DIR, UPLOADS_DIR } from "../db";
 import { parseMediaRef } from "../media-refs";
 import { parseStoryboardFrames } from "../storyboard";
+import { chaptersOf } from "../chapters";
+import { KEY_POINT_KEYS, keyPointsOf, type KeyPoints } from "../key-points";
 import { packageIndex } from "./package";
 import { signatureFor } from "./release-signing";
 import {
@@ -99,19 +101,15 @@ function buildReleaseInStaging(
   }[];
 
   const skills = db.prepare(
-    `SELECT s.id, s.slug, s.title, s.category_id, s.description, s.thumbnail_media_id, s.created_at
+    `SELECT s.id, s.slug, s.title, s.category_id, s.description, s.thumbnail_media_id, s.created_at,
+            ${KEY_POINT_KEYS.map((key) => `s.${key}`).join(", ")}
      FROM skills s ORDER BY s.title COLLATE NOCASE`
-  ).all() as {
-    id: number; slug: string; title: string; category_id: number | null; description: string;
-    thumbnail_media_id: number | null; created_at: string;
-  }[];
+  ).all() as ExportSkill[];
 
   const resources = db.prepare(
-    `SELECT r.id, r.skill_id, r.type, r.title, r.content, r.position
+    `SELECT r.id, r.skill_id, r.type, r.title, r.content, r.position, r.chapters
      FROM resources r ORDER BY r.skill_id, r.position, r.id`
-  ).all() as {
-    id: number; skill_id: number; type: string; title: string; content: string; position: number;
-  }[];
+  ).all() as ExportResource[];
 
   const neededMediaIds = new Set<number>();
   const vimeoResources: { id: number; title: string; skillTitle: string }[] = [];
@@ -241,14 +239,23 @@ function buildReleaseInStaging(
   };
 }
 
+type ExportSkill = {
+  id: number; slug: string; title: string; category_id: number | null; description: string;
+  thumbnail_media_id: number | null; created_at: string;
+} & KeyPoints;
+
+interface ExportResource {
+  id: number; skill_id: number; type: string; title: string; content: string; position: number; chapters: string;
+}
+
 function buildCatalogue(
   cataloguePath: string,
   releaseId: string,
   options: ExportOptions,
   groups: { id: number; slug: string; name: string; description: string; position: number }[],
   categories: { id: number; group_id: number | null; slug: string; name: string; description: string; position: number }[],
-  skills: { id: number; slug: string; title: string; category_id: number | null; description: string; thumbnail_media_id: number | null; created_at: string }[],
-  resources: { id: number; skill_id: number; type: string; title: string; content: string; position: number }[],
+  skills: ExportSkill[],
+  resources: ExportResource[],
   assetPaths: Map<number, string>,
   mediaRows: AssetEntry[]
 ) {
@@ -270,16 +277,22 @@ function buildCatalogue(
   for (const c of categories) insertCategory.run(c.id, c.group_id, c.slug, c.name, c.description, c.position);
 
   const insertSkill = cat.prepare(
-    "INSERT INTO skills (id, slug, title, category_id, description, thumbnail_asset, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    `INSERT INTO skills (id, slug, title, category_id, description, thumbnail_asset, created_at, ${KEY_POINT_KEYS.join(", ")})
+     VALUES (?, ?, ?, ?, ?, ?, ?, ${KEY_POINT_KEYS.map(() => "?").join(", ")})`
   );
   for (const s of skills) {
     const thumbnailAsset = s.thumbnail_media_id ? assetPaths.get(s.thumbnail_media_id) ?? null : null;
-    insertSkill.run(s.id, s.slug, s.title, s.category_id, s.description, thumbnailAsset, s.created_at);
+    const points = keyPointsOf(s);
+    insertSkill.run(
+      s.id, s.slug, s.title, s.category_id, s.description, thumbnailAsset, s.created_at,
+      ...KEY_POINT_KEYS.map((key) => points[key])
+    );
   }
 
   const insertResource = cat.prepare(
     "INSERT INTO resources (id, skill_id, type, title, content, asset, requires_internet, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
   );
+  const setChapters = cat.prepare("UPDATE resources SET chapters = ? WHERE id = ?");
   const insertFrame = cat.prepare(
     "INSERT INTO storyboard_frames (resource_id, position, asset, alt, caption) VALUES (?, ?, ?, ?, ?)"
   );
@@ -309,6 +322,10 @@ function buildCatalogue(
     // Uploaded videos keep their own type: the iPad app reads "video" as a
     // Vimeo link that needs a connection, and "local_video" as a bundled file.
     insertResource.run(r.id, r.skill_id, r.type, r.title, "", asset, 0, r.position);
+    if (r.type === "local_video") {
+      const chapters = chaptersOf(r.chapters);
+      if (chapters.length > 0) setChapters.run(JSON.stringify(chapters), r.id);
+    }
   }
 
   const insertMedia = cat.prepare(

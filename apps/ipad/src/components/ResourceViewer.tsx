@@ -2,6 +2,8 @@ import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import type { Resource, StoryboardFrame } from "@/data/types";
 import { assetUrl, mediaUrl } from "@/data/assets";
 import { listStoryboardFrames, getMedia } from "@/data/catalogue";
+import type { KeyPointSection } from "@/data/keyPoints";
+import { parseChapters } from "@/data/videoTools";
 import Card from "./Card";
 import Button, { buttonClass } from "./Button";
 import EmptyState from "./EmptyState";
@@ -9,6 +11,8 @@ import Spinner from "./Spinner";
 import { Eyebrow } from "./PageTitle";
 import ResourceIcon, { resourceTypeLabel } from "./ResourceIcon";
 import PracticeMode, { NO_PRACTICE, type PracticeProgress } from "./PracticeMode";
+import KeyPointsPanel from "./KeyPointsPanel";
+import VideoTools from "./VideoTools";
 import {
   ChecklistIcon,
   ChevronLeftIcon,
@@ -33,6 +37,26 @@ interface ResourceViewerProps {
   resources: Resource[];
   /** Title block shown above the resource list (beside the media in landscape). */
   intro: React.ReactNode;
+  /** The skill's key points; when there are any they open as the first tab. */
+  keyPoints?: KeyPointSection[];
+}
+
+/** The key points tab sits in the list like a resource, under an id no
+ *  real resource can have. */
+export const KEY_POINTS_TYPE = "key_points";
+const KEY_POINTS_ID = -1;
+
+function keyPointsTab(skillResources: Resource[]): Resource {
+  return {
+    id: KEY_POINTS_ID,
+    skill_id: skillResources[0]?.skill_id ?? 0,
+    type: KEY_POINTS_TYPE,
+    title: "Key points",
+    content: "",
+    asset: null,
+    requires_internet: 0,
+    position: -1,
+  };
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -45,7 +69,9 @@ const PdfViewer = lazy(() => import("./PdfViewer"));
  * the title and a numbered contents list, beside a full-height media stage.
  * Portrait stacks them, with the contents as a row of tabs.
  */
-export default function ResourceViewer({ resources, intro }: ResourceViewerProps) {
+export default function ResourceViewer({ resources: skillResources, intro, keyPoints = [] }: ResourceViewerProps) {
+  const resources = keyPoints.length > 0 ? [keyPointsTab(skillResources), ...skillResources] : skillResources;
+  const equipment = keyPoints.find((section) => section.key === "equipment")?.items ?? [];
   const [activeId, setActiveId] = useState(resources[0]?.id);
   const active = resources.find((r) => r.id === activeId) ?? resources[0];
   // Practice progress per storyboard, kept while the skill is open so that
@@ -159,6 +185,8 @@ export default function ResourceViewer({ resources, intro }: ResourceViewerProps
             <div key={active.id} className="animate-fade-in">
               <ResourcePanel
                 resource={active}
+                keyPoints={keyPoints}
+                equipment={equipment}
                 practice={practice[active.id] ?? NO_PRACTICE}
                 onPractice={(progress) => setPractice((p) => ({ ...p, [active.id]: progress }))}
                 step={steps[active.id] ?? 0}
@@ -178,18 +206,24 @@ export default function ResourceViewer({ resources, intro }: ResourceViewerProps
 
 function ResourcePanel({
   resource,
+  keyPoints,
+  equipment,
   practice,
   onPractice,
   step,
   onStep,
 }: {
   resource: Resource;
+  keyPoints: KeyPointSection[];
+  equipment: string[];
   practice: PracticeProgress;
   onPractice: (progress: PracticeProgress) => void;
   step: number;
   onStep: (step: number) => void;
 }) {
   switch (resource.type) {
+    case KEY_POINTS_TYPE:
+      return <KeyPointsPanel sections={keyPoints} />;
     case "video":
       // Releases built before uploaded videos kept their own type exported
       // them as "video" with a bundled asset; play those from the file.
@@ -205,7 +239,14 @@ function ResourcePanel({
       return <ImagePanel resource={resource} />;
     case "storyboard":
       return (
-        <StoryboardPanel resource={resource} practice={practice} onPractice={onPractice} step={step} onStep={onStep} />
+        <StoryboardPanel
+          resource={resource}
+          equipment={equipment}
+          practice={practice}
+          onPractice={onPractice}
+          step={step}
+          onStep={onStep}
+        />
       );
     default:
       return (
@@ -286,6 +327,7 @@ function LocalVideoPanel({ resource }: { resource: Resource }) {
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const src = mediaUrl(resource.asset);
+  const chapters = parseChapters(resource.chapters);
 
   // Switching resource or leaving the skill unmounts the player. WebKit can
   // keep a detached video playing (and its file request open) until it's
@@ -353,6 +395,7 @@ function LocalVideoPanel({ resource }: { resource: Resource }) {
           Full screen
         </Button>
       </MediaLabel>
+      <VideoTools video={video} chapters={chapters} ready={ready} />
     </>
   );
 }
@@ -579,12 +622,14 @@ function Lightbox({ src, alt, onClose }: { src: string; alt: string; onClose: ()
 
 function StoryboardPanel({
   resource,
+  equipment,
   practice,
   onPractice,
   step,
   onStep,
 }: {
   resource: Resource;
+  equipment: string[];
   practice: PracticeProgress;
   onPractice: (progress: PracticeProgress) => void;
   step: number;
@@ -774,6 +819,7 @@ function StoryboardPanel({
           progress={practice}
           onChange={onPractice}
           onClose={() => setPractising(false)}
+          equipment={equipment}
         />
       )}
     </section>

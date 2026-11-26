@@ -1,4 +1,5 @@
 import { getDb } from "./db";
+import { KEY_POINT_KEYS, keyPointsOf, type KeyPoints } from "./key-points";
 import { mediaUrl } from "./media-refs";
 import { slugify } from "./slug";
 
@@ -49,6 +50,11 @@ export interface Skill {
   category_slug: string | null;
   group_name: string | null;
   group_slug: string | null;
+  indications: string;
+  contraindications: string;
+  equipment: string;
+  red_flags: string;
+  common_errors: string;
 }
 
 export interface SkillWithCount extends Skill {
@@ -62,6 +68,8 @@ export interface Resource {
   title: string;
   content: string;
   position: number;
+  /** Chapters of an uploaded video, as "m:ss Name" lines. */
+  chapters: string;
 }
 
 export interface SkillFilter {
@@ -445,11 +453,21 @@ export function slugAvailable(slug: string, excludeId?: number): boolean {
     .get(slug, excludeId ?? -1);
 }
 
-export function createSkill(title: string, categoryId: number | null, description: string): number {
+const KEY_POINT_ASSIGNMENTS = KEY_POINT_KEYS.map((key) => `${key} = ?`).join(", ");
+
+export function createSkill(
+  title: string,
+  categoryId: number | null,
+  description: string,
+  keyPoints: KeyPoints = keyPointsOf({})
+): number {
   const slug = uniqueSlug(title);
   const result = getDb()
-    .prepare("INSERT INTO skills (slug, title, category_id, description) VALUES (?, ?, ?, ?)")
-    .run(slug, title, categoryId, description);
+    .prepare(
+      `INSERT INTO skills (slug, title, category_id, description, ${KEY_POINT_KEYS.join(", ")})
+       VALUES (?, ?, ?, ?, ${KEY_POINT_KEYS.map(() => "?").join(", ")})`
+    )
+    .run(slug, title, categoryId, description, ...KEY_POINT_KEYS.map((key) => keyPoints[key]));
   return Number(result.lastInsertRowid);
 }
 
@@ -457,12 +475,16 @@ export function updateSkill(
   id: number,
   title: string,
   categoryId: number | null,
-  description: string
+  description: string,
+  keyPoints: KeyPoints
 ) {
   const slug = uniqueSlug(title, id);
   getDb()
-    .prepare("UPDATE skills SET slug = ?, title = ?, category_id = ?, description = ? WHERE id = ?")
-    .run(slug, title, categoryId, description, id);
+    .prepare(
+      `UPDATE skills SET slug = ?, title = ?, category_id = ?, description = ?, ${KEY_POINT_ASSIGNMENTS}
+       WHERE id = ?`
+    )
+    .run(slug, title, categoryId, description, ...KEY_POINT_KEYS.map((key) => keyPoints[key]), id);
   return slug;
 }
 
@@ -474,18 +496,26 @@ export function deleteSkill(id: number) {
   getDb().prepare("DELETE FROM skills WHERE id = ?").run(id);
 }
 
-export function addResource(skillId: number, type: ResourceType, title: string, content: string) {
+export function addResource(
+  skillId: number,
+  type: ResourceType,
+  title: string,
+  content: string,
+  chapters = ""
+) {
   const db = getDb();
   const max = db
     .prepare("SELECT COALESCE(MAX(position), -1) AS p FROM resources WHERE skill_id = ?")
     .get(skillId) as { p: number };
   db.prepare(
-    "INSERT INTO resources (skill_id, type, title, content, position) VALUES (?, ?, ?, ?, ?)"
-  ).run(skillId, type, title, content, max.p + 1);
+    "INSERT INTO resources (skill_id, type, title, content, position, chapters) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run(skillId, type, title, content, max.p + 1, chapters);
 }
 
-export function updateResource(id: number, title: string, content: string) {
-  getDb().prepare("UPDATE resources SET title = ?, content = ? WHERE id = ?").run(title, content, id);
+export function updateResource(id: number, title: string, content: string, chapters = "") {
+  getDb()
+    .prepare("UPDATE resources SET title = ?, content = ?, chapters = ? WHERE id = ?")
+    .run(title, content, chapters, id);
 }
 
 export function deleteResource(id: number) {
@@ -533,7 +563,9 @@ export interface SkillSnapshot {
   description: string;
   thumbnail_media_id: number | null;
   created_at: string;
-  resources: { type: ResourceType; title: string; content: string; position: number }[];
+  /** Absent from entries binned before key points existed. */
+  key_points?: KeyPoints;
+  resources: { type: ResourceType; title: string; content: string; position: number; chapters?: string }[];
 }
 
 export interface ResourceSnapshot {
@@ -543,6 +575,7 @@ export interface ResourceSnapshot {
   title: string;
   content: string;
   position: number;
+  chapters?: string;
 }
 
 export interface ThumbnailSnapshot {
@@ -604,11 +637,14 @@ export function restoreSkillSnapshot(snapshot: SkillSnapshot): { id: number; slu
   const categoryId = findOrCreateCategory(snapshot.category, snapshot.group);
   const thumbnailId = mediaExists(snapshot.thumbnail_media_id) ? snapshot.thumbnail_media_id : null;
 
+  const keyPoints = keyPointsOf(snapshot.key_points ?? {});
+
   const restore = db.transaction(() => {
     const result = db
       .prepare(
-        `INSERT INTO skills (${reuseId ? "id, " : ""}slug, title, category_id, description, thumbnail_media_id, created_at)
-         VALUES (${reuseId ? "?, " : ""}?, ?, ?, ?, ?, ?)`
+        `INSERT INTO skills (${reuseId ? "id, " : ""}slug, title, category_id, description, thumbnail_media_id, created_at,
+           ${KEY_POINT_KEYS.join(", ")})
+         VALUES (${reuseId ? "?, " : ""}?, ?, ?, ?, ?, ?, ${KEY_POINT_KEYS.map(() => "?").join(", ")})`
       )
       .run(
         ...(reuseId ? [snapshot.id] : []),
@@ -617,13 +653,14 @@ export function restoreSkillSnapshot(snapshot: SkillSnapshot): { id: number; slu
         categoryId,
         snapshot.description,
         thumbnailId,
-        snapshot.created_at
+        snapshot.created_at,
+        ...KEY_POINT_KEYS.map((key) => keyPoints[key])
       );
     const id = Number(result.lastInsertRowid);
     const insert = db.prepare(
-      "INSERT INTO resources (skill_id, type, title, content, position) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO resources (skill_id, type, title, content, position, chapters) VALUES (?, ?, ?, ?, ?, ?)"
     );
-    for (const r of snapshot.resources) insert.run(id, r.type, r.title, r.content, r.position);
+    for (const r of snapshot.resources) insert.run(id, r.type, r.title, r.content, r.position, r.chapters ?? "");
     return id;
   });
 
@@ -652,7 +689,14 @@ function repointTrashedResources(oldSkillId: number, newSkillId: number) {
 export function restoreResourceSnapshot(snapshot: ResourceSnapshot) {
   getDb()
     .prepare(
-      "INSERT INTO resources (skill_id, type, title, content, position) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO resources (skill_id, type, title, content, position, chapters) VALUES (?, ?, ?, ?, ?, ?)"
     )
-    .run(snapshot.skill_id, snapshot.type, snapshot.title, snapshot.content, snapshot.position);
+    .run(
+      snapshot.skill_id,
+      snapshot.type,
+      snapshot.title,
+      snapshot.content,
+      snapshot.position,
+      snapshot.chapters ?? ""
+    );
 }
